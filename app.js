@@ -63,6 +63,9 @@ const usersBtn = document.getElementById('usersBtn');
 const userOverlay = document.getElementById('userOverlay');
 const userList = document.getElementById('userList');
 const userForm = document.getElementById('userForm');
+const searchBox = document.getElementById('searchBox');
+const searchInput = document.getElementById('search');
+const clearSearchBtn = document.getElementById('clearSearch');
 const sidebarSearch = document.getElementById('sidebarSearch');
 const sidebarSearchBtn = document.getElementById('sidebarSearchBtn');
 const sidebarGlobalSearchBtn = document.getElementById('sidebarGlobalSearchBtn');
@@ -512,18 +515,28 @@ function getContrastColor(hexcolor) {
   return (yiq >= 128) ? '#000000' : '#ffffff';
 }
 
+function syncSearchControls() {
+  if (searchBox) searchBox.classList.toggle('has-value', Boolean(searchTerm));
+}
+
+function applySearchTerm(value, source) {
+  searchTerm = (value || '').trim();
+  if (source !== 'top' && searchInput) searchInput.value = searchTerm;
+  if (source !== 'side' && sidebarSearch) sidebarSearch.value = searchTerm;
+  syncSearchControls();
+  render();
+}
+
 if (sidebarSearch) {
   sidebarSearch.addEventListener('input', (e) => {
-    searchTerm = e.target.value.trim();
-    render();
+    applySearchTerm(e.target.value, 'side');
   });
 }
 
 if (sidebarSearchBtn) {
   sidebarSearchBtn.addEventListener('click', () => {
     if (sidebarSearch) {
-      searchTerm = sidebarSearch.value.trim();
-      render();
+      applySearchTerm(sidebarSearch.value, 'side');
     }
   });
 }
@@ -531,8 +544,8 @@ if (sidebarSearchBtn) {
 if (sidebarGlobalSearchBtn) {
   sidebarGlobalSearchBtn.addEventListener('click', () => {
     globalSearchOverlay.classList.add('show');
-    if (sidebarSearch && sidebarSearch.value) {
-      globalSearchInput.value = sidebarSearch.value;
+    if (searchTerm) {
+      globalSearchInput.value = searchTerm;
     }
   });
 }
@@ -1351,9 +1364,13 @@ form.addEventListener('submit', async e => {
   await save('Guardado ✓');
 });
 
-document.getElementById('search').addEventListener('input', e => {
-  searchTerm = e.target.value;
-  render();
+searchInput.addEventListener('input', e => {
+  applySearchTerm(e.target.value, 'top');
+});
+
+clearSearchBtn.addEventListener('click', () => {
+  applySearchTerm('', 'top');
+  searchInput.focus();
 });
 
 document.getElementById('statusFilter').addEventListener('click', e => {
