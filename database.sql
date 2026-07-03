@@ -35,9 +35,11 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_slot VARCHAR(2);
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
 CREATE INDEX IF NOT EXISTS idx_users_active ON users (active);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_active_slot ON users (profile_slot) WHERE active = TRUE AND profile_slot IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS covers (
     category VARCHAR(20) PRIMARY KEY,

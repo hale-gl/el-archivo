@@ -472,7 +472,7 @@ def get_users():
     with connect() as conn:
         rows = conn.execute(
             """
-            SELECT id, username, display_name, role, active, created_at
+            SELECT id, username, display_name, role, active, created_at, profile_slot
             FROM users
             ORDER BY active DESC, username ASC
             """
@@ -486,6 +486,7 @@ def get_users():
                 "role": row[3] or "user",
                 "active": row[4],
                 "createdAt": row[5].isoformat() if row[5] else None,
+                "profileSlot": row[6],
             }
             for row in rows
         ]
@@ -498,18 +499,15 @@ def get_profiles():
     with connect() as conn:
         rows = conn.execute(
             """
-            SELECT username, display_name
+            SELECT username, display_name, profile_slot
             FROM users
-            WHERE active = TRUE AND role = 'user'
-            ORDER BY id ASC
-            LIMIT 2
+            WHERE active = TRUE AND profile_slot IN ('P1', 'P2')
             """
         ).fetchall()
-    slots = ["P1", "P2"]
     return jsonify(
         [
-            {"slot": slots[idx], "username": row[0], "displayName": row[1] or row[0]}
-            for idx, row in enumerate(rows)
+            {"slot": row[2], "username": row[0], "displayName": row[1] or row[0]}
+            for row in rows
         ]
     )
 
@@ -522,28 +520,46 @@ def create_user():
     password = data.get("password") or ""
     display_name = (data.get("displayName") or username).strip()
     role = data.get("role") if data.get("role") in {"admin", "user"} else "user"
+    profile_slot = data.get("profileSlot") or None
+    if profile_slot not in {None, "", "P1", "P2"}:
+        return jsonify({"error": "Perfil invalido"}), 400
+    profile_slot = profile_slot or None
     if len(username) < 3 or len(password) < 6:
         return jsonify({"error": "Usuario minimo 3 caracteres y contrasena minimo 6"}), 400
 
     with connect() as conn:
         with conn.transaction():
+            if profile_slot:
+                taken = conn.execute(
+                    """
+                    SELECT display_name FROM users
+                    WHERE active = TRUE AND profile_slot = %s AND username != %s
+                    """,
+                    (profile_slot, username),
+                ).fetchone()
+                if taken:
+                    nombre = "Persona 1" if profile_slot == "P1" else "Persona 2"
+                    return jsonify(
+                        {"error": f"{nombre} ya esta asignada a {taken[0]}. Desactivala o elige otro perfil."}
+                    ), 409
+
             exists = conn.execute("SELECT id FROM users WHERE username = %s", (username,)).fetchone()
             if exists:
                 conn.execute(
                     """
                     UPDATE users
-                    SET password_hash = %s, display_name = %s, role = %s, active = TRUE
+                    SET password_hash = %s, display_name = %s, role = %s, active = TRUE, profile_slot = %s
                     WHERE username = %s
                     """,
-                    (generate_password_hash(password), display_name, role, username),
+                    (generate_password_hash(password), display_name, role, profile_slot, username),
                 )
             else:
                 conn.execute(
                     """
-                    INSERT INTO users (username, password_hash, display_name, role, active)
-                    VALUES (%s, %s, %s, %s, TRUE)
+                    INSERT INTO users (username, password_hash, display_name, role, active, profile_slot)
+                    VALUES (%s, %s, %s, %s, TRUE, %s)
                     """,
-                    (username, generate_password_hash(password), display_name, role),
+                    (username, generate_password_hash(password), display_name, role, profile_slot),
                 )
     return jsonify({"success": True})
 
@@ -566,9 +582,23 @@ def disable_user(user_id):
 @admin_required
 def activate_user(user_id):
     with connect() as conn:
-        row = conn.execute("SELECT id FROM users WHERE id = %s", (user_id,)).fetchone()
+        row = conn.execute("SELECT id, profile_slot FROM users WHERE id = %s", (user_id,)).fetchone()
         if not row:
             return jsonify({"error": "Usuario no encontrado"}), 404
+        profile_slot = row[1]
+        if profile_slot:
+            taken = conn.execute(
+                """
+                SELECT display_name FROM users
+                WHERE active = TRUE AND profile_slot = %s AND id != %s
+                """,
+                (profile_slot, user_id),
+            ).fetchone()
+            if taken:
+                nombre = "Persona 1" if profile_slot == "P1" else "Persona 2"
+                return jsonify(
+                    {"error": f"{nombre} ya esta asignada a {taken[0]}. Cambia su perfil o desactivalo primero."}
+                ), 409
         conn.execute("UPDATE users SET active = TRUE WHERE id = %s", (user_id,))
     return jsonify({"success": True})
 

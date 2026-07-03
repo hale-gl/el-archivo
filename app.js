@@ -309,11 +309,12 @@ async function loadSession() {
 }
 
 function renderUsers(users) {
+  const slotLabel = slot => slot === 'P1' ? 'Persona 1' : slot === 'P2' ? 'Persona 2' : 'sin perfil';
   userList.innerHTML = users.map(user => `
     <div class="user-row ${user.active ? '' : 'inactive'}">
       <div>
         <strong>${escapeHtml(user.displayName || user.username)}</strong>
-        <span>${escapeHtml(user.username)} · ${escapeHtml(user.role)} · ${user.active ? 'activo' : 'inactivo'}</span>
+        <span>${escapeHtml(user.username)} · ${escapeHtml(user.role)} · ${user.active ? 'activo' : 'inactivo'} · ${slotLabel(user.profileSlot)}</span>
       </div>
       ${user.active && user.username !== currentSession?.username
         ? `<button type="button" class="link-btn danger" data-user-disable="${user.id}">Desactivar</button>`
@@ -352,6 +353,7 @@ async function saveUser(event) {
     displayName: document.getElementById('u-display').value.trim(),
     password: document.getElementById('u-password').value,
     role: document.getElementById('u-role').value,
+    profileSlot: document.getElementById('u-slot').value || null,
   };
   const res = await fetch('/api/users', {
     method: 'POST',
