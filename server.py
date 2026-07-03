@@ -640,6 +640,52 @@ def activate_user(user_id):
     return jsonify({"success": True})
 
 
+@app.put("/api/users/<int:user_id>")
+@admin_required
+def update_user(user_id):
+    data = request.get_json(silent=True) or {}
+    display_name = (data.get("displayName") or "").strip()
+    color = data.get("color") or "#3b82f6"
+    profile_slot = data.get("profileSlot") or None
+    
+    if profile_slot not in {None, "", "P1", "P2"}:
+        return jsonify({"error": "Perfil invalido"}), 400
+    profile_slot = profile_slot or None
+    
+    with connect() as conn:
+        row = conn.execute("SELECT id, username, profile_slot FROM users WHERE id = %s", (user_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Usuario no encontrado"}), 404
+        
+        current_slot = row[2]
+        
+        with conn.transaction():
+            if profile_slot and profile_slot != current_slot:
+                taken = conn.execute(
+                    """
+                    SELECT display_name FROM users
+                    WHERE active = TRUE AND profile_slot = %s AND id != %s
+                    """,
+                    (profile_slot, user_id),
+                ).fetchone()
+                if taken:
+                    nombre = "Persona 1" if profile_slot == "P1" else "Persona 2"
+                    return jsonify(
+                        {"error": f"{nombre} ya esta asignada a {taken[0]}. Desactivala o elige otro perfil."}
+                    ), 409
+            
+            conn.execute(
+                """
+                UPDATE users
+                SET display_name = %s, color = %s, profile_slot = %s
+                WHERE id = %s
+                """,
+                (display_name or None, color, profile_slot, user_id),
+            )
+    
+    return jsonify({"success": True})
+
+
 @app.get("/")
 @login_required
 def index():

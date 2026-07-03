@@ -317,14 +317,22 @@ function renderUsers(users) {
         <span>${escapeHtml(user.username)} · ${escapeHtml(user.role)} · ${user.active ? 'activo' : 'inactivo'} · ${slotLabel(user.profileSlot)}</span>
         ${user.badge ? `<span class="badge badge-${user.badge.level}">${escapeHtml(user.badge.label)}</span>` : ''}
       </div>
-      ${user.active && user.username !== currentSession?.username
-        ? `<button type="button" class="link-btn danger" data-user-disable="${user.id}">Desactivar</button>`
-        : ''}
-      ${!user.active
-        ? `<button type="button" class="link-btn" data-user-activate="${user.id}">Activar</button>`
-        : ''}
+      <div class="user-actions">
+        ${user.active
+          ? `<button type="button" class="link-btn" data-user-edit="${user.id}">Editar</button>`
+          : ''}
+        ${user.active && user.username !== currentSession?.username
+          ? `<button type="button" class="link-btn danger" data-user-disable="${user.id}">Desactivar</button>`
+          : ''}
+        ${!user.active
+          ? `<button type="button" class="link-btn" data-user-activate="${user.id}">Activar</button>`
+          : ''}
+      </div>
     </div>
   `).join('');
+  userList.querySelectorAll('[data-user-edit]').forEach(button => {
+    button.addEventListener('click', () => editUser(button.dataset.userEdit));
+  });
   userList.querySelectorAll('[data-user-disable]').forEach(button => {
     button.addEventListener('click', () => disableUser(button.dataset.userDisable));
   });
@@ -345,6 +353,37 @@ async function openUsersPanel() {
   }
   renderUsers(await res.json());
   userOverlay.classList.add('show');
+  resetUserForm();
+}
+
+let editingUserId = null;
+
+function resetUserForm() {
+  editingUserId = null;
+  userForm.reset();
+  document.getElementById('u-color').value = '#3b82f6';
+  document.getElementById('modalTitle').textContent = 'Usuarios';
+}
+
+async function editUser(userId) {
+  const res = await fetch('/api/users');
+  if (!res.ok) return;
+  const users = await res.json();
+  const user = users.find(u => u.id === parseInt(userId));
+  if (!user) return;
+  
+  editingUserId = userId;
+  document.getElementById('u-username').value = user.username;
+  document.getElementById('u-username').disabled = true;
+  document.getElementById('u-display').value = user.displayName || '';
+  document.getElementById('u-role').value = user.role;
+  document.getElementById('u-slot').value = user.profileSlot || '';
+  document.getElementById('u-color').value = user.color || '#3b82f6';
+  document.getElementById('u-password').value = '';
+  document.getElementById('u-password').placeholder = 'Dejar vacio para mantener contrasena actual';
+  document.getElementById('u-password').required = false;
+  
+  document.querySelector('#userOverlay h2').textContent = 'Editar usuario';
 }
 
 async function saveUser(event) {
@@ -357,19 +396,38 @@ async function saveUser(event) {
     profileSlot: document.getElementById('u-slot').value || null,
     color: document.getElementById('u-color').value || '#3b82f6',
   };
-  const res = await fetch('/api/users', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  
+  let res;
+  if (editingUserId) {
+    res = await fetch(`/api/users/${editingUserId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        displayName: payload.displayName,
+        color: payload.color,
+        profileSlot: payload.profileSlot,
+      }),
+    });
+  } else {
+    if (!payload.password || payload.password.length < 6) {
+      showToast('Contrasena minimo 6 caracteres', 'error');
+      return;
+    }
+    res = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+  
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     showToast(data.error || 'No se pudo guardar usuario', 'error');
     return;
   }
-  userForm.reset();
-  document.getElementById('u-color').value = '#3b82f6';
-  showToast('Usuario guardado');
+  
+  resetUserForm();
+  showToast(editingUserId ? 'Usuario actualizado' : 'Usuario guardado');
   await openUsersPanel();
   await loadProfiles();
 }
@@ -408,7 +466,7 @@ async function loadProfiles() {
     document.querySelectorAll('.who-btn[data-who]').forEach(btn => {
       const slot = btn.dataset.who;
       const profile = bySlot[slot];
-      const label = profile ? profile.displayName : (slot === 'P1' ? 'Persona 1' : 'Persona 2');
+      const label = profile ? profile.displayName : (slot === 'P1' ? 'Persona 1' : slot === 'P2' ? 'Persona 2' : 'Compartido');
       btn.textContent = label;
       if (profile && profile.color) {
         btn.style.backgroundColor = profile.color;

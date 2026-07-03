@@ -1200,6 +1200,11 @@ a:focus-visible{
 .user-row.inactive{
   opacity:0.5;
 }
+.user-actions{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
 .badge{
   display:inline-block;
   font-size:11px;
