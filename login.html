@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Entrada privada a El Archivo.">
+<title>Entrar - El Archivo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="login-page">
+  <main class="login-shell">
+    <section class="login-card" aria-labelledby="loginTitle">
+      <p class="login-kicker">Archivo privado</p>
+      <h1 id="loginTitle">EL ARCHIVO</h1>
+      <form id="loginForm" class="login-form">
+        <div class="field">
+          <label for="loginUser">Usuario</label>
+          <input id="loginUser" name="username" type="text" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="loginPassword">Contrasena</label>
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn-primary login-submit" type="submit">Entrar</button>
+        <p class="login-error" id="loginError" role="alert"></p>
+      </form>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById('loginForm');
+    const error = document.getElementById('loginError');
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      error.textContent = '';
+      const button = form.querySelector('button');
+      button.disabled = true;
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('loginUser').value.trim(),
+            password: document.getElementById('loginPassword').value,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'No se pudo entrar');
+        }
+        window.location.href = '/';
+      } catch (e) {
+        error.textContent = e.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

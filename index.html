@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Catalogo personal para organizar series, peliculas, anime, drama, manga y manhwa por perfil y progreso.">
+<title>El Archivo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+<header class="marquee">
+  <h1>EL ARCHIVO</h1>
+  <p>Series - Peliculas - Anime - Manga & Manhwa</p>
+  <div class="who">
+    <span class="viewer-label">viendo como:</span>
+    <button class="who-btn active" data-who="">Compartido</button>
+    <button class="who-btn" data-who="P1">Persona 1</button>
+    <button class="who-btn" data-who="P2">Persona 2</button>
+    <button class="who-btn admin-btn" id="usersBtn" style="display:none;">Usuarios</button>
+    <button class="who-btn logout-btn" id="logoutBtn">Salir</button>
+  </div>
+</header>
+
+<main id="contenido">
+  <nav class="tabs" id="tabs" aria-label="Categorias"></nav>
+
+  <section class="cover-banner" id="coverBanner" style="display:none;">
+    <img id="coverImg" class="cover-img" src="" alt="Portada de categoria">
+    <div class="cover-overlay"></div>
+    <div class="cover-label" id="coverLabel"></div>
+    <button class="cover-edit-btn" id="coverEditBtn">Editar portada</button>
+  </section>
+
+  <section class="toolbar" aria-label="Filtros">
+    <input type="text" id="search" placeholder="Buscar por titulo..." aria-label="Buscar por titulo">
+    <div class="chip-group" id="statusFilter">
+      <span class="chip active" data-status="">Todos</span>
+      <span class="chip" data-status="pendiente">Pendiente</span>
+      <span class="chip" data-status="en-curso">En curso</span>
+      <span class="chip" data-status="completado">Terminado</span>
+    </div>
+    <button class="add-btn" id="openAdd">+ Anadir</button>
+  </section>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="emptyState" style="display:none;">
+    <b>Aun no hay nada aqui</b>
+    Anade tu primer titulo con el boton "+ Anadir" de arriba.
+  </div>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2 id="modalTitle">Anadir titulo</h2>
+    <form id="itemForm">
+      <div class="field">
+        <label>Titulo</label>
+        <input type="text" id="f-title" required placeholder="Ej. Cowboy Bebop">
+      </div>
+      <div class="lookup-panel">
+        <div class="lookup-actions">
+          <button type="button" class="btn-secondary lookup-btn" id="metadataSearchBtn">Buscar online</button>
+          <span class="lookup-status" id="metadataStatus">Busca poster, enlace y capitulos.</span>
+        </div>
+        <div class="provider-search">
+          <button type="button" class="provider-search-btn" data-provider-search="jkanime">Google: Jkanime</button>
+          <button type="button" class="provider-search-btn" data-provider-search="seriesflix">Google: Seriesflix</button>
+        </div>
+        <div class="metadata-results" id="metadataResults"></div>
+      </div>
+      <div class="field">
+        <label>Enlace externo</label>
+        <input type="url" id="f-link" placeholder="https://...">
+      </div>
+      <div class="field">
+        <label>Asignado a</label>
+        <select id="f-who">
+          <option value="">Compartido</option>
+          <option value="P1">Persona 1</option>
+          <option value="P2">Persona 2</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Imagen del poster</label>
+        <div class="image-picker">
+          <input type="file" id="f-image-file" accept="image/*">
+          <span>o</span>
+          <input type="text" id="f-image" placeholder="Pegar URL de imagen...">
+        </div>
+        <div class="image-preview" id="imagePreview" style="display:none;">
+          <img id="imagePreviewImg" src="" alt="Vista previa del poster">
+          <button type="button" class="link-btn danger" id="clearImageBtn">Quitar imagen</button>
+        </div>
+      </div>
+      <div class="hint">Opcional: puedes subir una imagen desde tu equipo o usar una URL.</div>
+      <div class="field">
+        <label>Categoria</label>
+        <select id="f-category">
+          <option value="series">Serie</option>
+          <option value="pelicula">Pelicula</option>
+          <option value="drama">Drama</option>
+          <option value="anime">Anime</option>
+          <option value="lectura">Manga / Manhwa</option>
+        </select>
+      </div>
+      <div class="field" id="f-subtype-wrap" style="display:none;">
+        <label>Formato</label>
+        <select id="f-subtype">
+          <option value="manga">Manga</option>
+          <option value="manhwa">Manhwa</option>
+        </select>
+      </div>
+      <div class="hint" id="f-seasons-hint" style="display:none;"></div>
+      <div class="field progress-editor" id="f-progress-editor" style="display:none;"></div>
+      <div class="field">
+        <label>Estado</label>
+        <select id="f-status">
+          <option value="pendiente">Pendiente</option>
+          <option value="en-curso">En curso</option>
+          <option value="completado">Terminado</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="cancelBtn">Cancelar</button>
+        <button type="button" class="btn-secondary" id="deleteBtn" style="display:none;color:var(--crimson);border-color:var(--crimson-dim);">Eliminar</button>
+        <button type="submit" class="btn-primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast">Guardado</div>
+
+<div class="overlay" id="userOverlay">
+  <div class="modal">
+    <h2>Usuarios</h2>
+    <div class="user-list" id="userList"></div>
+    <form id="userForm" class="user-form">
+      <div class="field-row">
+        <div class="field">
+          <label>Usuario</label>
+          <input type="text" id="u-username" minlength="3" required placeholder="persona1">
+        </div>
+        <div class="field">
+          <label>Rol</label>
+          <select id="u-role">
+            <option value="user">Usuario</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Nombre visible</label>
+        <input type="text" id="u-display" placeholder="Persona 1">
+      </div>
+      <div class="field">
+        <label>Contrasena</label>
+        <input type="password" id="u-password" minlength="6" required placeholder="Minimo 6 caracteres">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" id="usersCancelBtn">Cerrar</button>
+        <button type="submit" class="btn-primary">Guardar usuario</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="coverOverlay">
+  <div class="modal">
+    <h2>Portada - <span id="coverCatLabel"></span></h2>
+    <div class="field">
+      <label>Imagen de portada</label>
+      <div class="image-picker">
+        <input type="file" id="f-cover-file" accept="image/*">
+        <span>o</span>
+        <input type="text" id="f-cover-url" placeholder="Pegar URL de imagen...">
+      </div>
+    </div>
+    <div class="hint">Se muestra como banner arriba de esta seccion, para las dos personas.</div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" id="coverCancelBtn">Cancelar</button>
+      <button type="button" class="btn-secondary" id="coverRemoveBtn" style="color:var(--crimson);border-color:var(--crimson-dim);">Quitar portada</button>
+      <button type="button" class="btn-primary" id="coverSaveBtn">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
