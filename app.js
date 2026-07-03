@@ -66,9 +66,7 @@ const userForm = document.getElementById('userForm');
 const searchBox = document.getElementById('searchBox');
 const searchInput = document.getElementById('search');
 const clearSearchBtn = document.getElementById('clearSearch');
-const sidebarSearch = document.getElementById('sidebarSearch');
-const sidebarSearchBtn = document.getElementById('sidebarSearchBtn');
-const sidebarGlobalSearchBtn = document.getElementById('sidebarGlobalSearchBtn');
+const globalSearchOpenBtn = document.getElementById('globalSearchOpenBtn');
 const globalSearchOverlay = document.getElementById('globalSearchOverlay');
 const globalSearchInput = document.getElementById('globalSearchInput');
 const globalSearchCategory = document.getElementById('globalSearchCategory');
@@ -522,27 +520,12 @@ function syncSearchControls() {
 function applySearchTerm(value, source) {
   searchTerm = (value || '').trim();
   if (source !== 'top' && searchInput) searchInput.value = searchTerm;
-  if (source !== 'side' && sidebarSearch) sidebarSearch.value = searchTerm;
   syncSearchControls();
   render();
 }
 
-if (sidebarSearch) {
-  sidebarSearch.addEventListener('input', (e) => {
-    applySearchTerm(e.target.value, 'side');
-  });
-}
-
-if (sidebarSearchBtn) {
-  sidebarSearchBtn.addEventListener('click', () => {
-    if (sidebarSearch) {
-      applySearchTerm(sidebarSearch.value, 'side');
-    }
-  });
-}
-
-if (sidebarGlobalSearchBtn) {
-  sidebarGlobalSearchBtn.addEventListener('click', () => {
+if (globalSearchOpenBtn) {
+  globalSearchOpenBtn.addEventListener('click', () => {
     globalSearchOverlay.classList.add('show');
     if (searchTerm) {
       globalSearchInput.value = searchTerm;
@@ -560,6 +543,15 @@ if (globalSearchCancelBtn) {
 
 if (globalSearchExecuteBtn) {
   globalSearchExecuteBtn.addEventListener('click', executeGlobalSearch);
+}
+
+if (globalSearchInput) {
+  globalSearchInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      executeGlobalSearch();
+    }
+  });
 }
 
 async function executeGlobalSearch() {
