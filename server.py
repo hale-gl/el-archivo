@@ -466,19 +466,46 @@ def session_state():
     return jsonify({"authenticated": is_logged_in(), "user": session.get("user")})
 
 
+def calculate_badge(profile_slot):
+    if not profile_slot:
+        return None
+    with connect() as conn:
+        count = conn.execute(
+            """
+            SELECT COUNT(*) FROM catalog
+            WHERE who = %s AND category IN ('series', 'anime')
+            """,
+            (profile_slot,),
+        ).fetchone()[0]
+    
+    if count >= 100:
+        return {"level": "diamante", "count": count, "label": "💎 Diamante"}
+    elif count >= 50:
+        return {"level": "oro", "count": count, "label": "🥇 Oro"}
+    elif count >= 25:
+        return {"level": "plata", "count": count, "label": "🥈 Plata"}
+    elif count >= 10:
+        return {"level": "bronce", "count": count, "label": "🥉 Bronce"}
+    else:
+        return None
+
+
 @app.get("/api/users")
 @admin_required
 def get_users():
     with connect() as conn:
         rows = conn.execute(
             """
-            SELECT id, username, display_name, role, active, created_at, profile_slot
+            SELECT id, username, display_name, role, active, created_at, profile_slot, color
             FROM users
             ORDER BY active DESC, username ASC
             """
         ).fetchall()
-    return jsonify(
-        [
+    
+    users_data = []
+    for row in rows:
+        badge = calculate_badge(row[6])
+        users_data.append(
             {
                 "id": row[0],
                 "username": row[1],
@@ -487,10 +514,11 @@ def get_users():
                 "active": row[4],
                 "createdAt": row[5].isoformat() if row[5] else None,
                 "profileSlot": row[6],
+                "color": row[7] or "#3b82f6",
+                "badge": badge,
             }
-            for row in rows
-        ]
-    )
+        )
+    return jsonify(users_data)
 
 
 @app.get("/api/profiles")
@@ -499,17 +527,25 @@ def get_profiles():
     with connect() as conn:
         rows = conn.execute(
             """
-            SELECT username, display_name, profile_slot
+            SELECT username, display_name, profile_slot, color
             FROM users
             WHERE active = TRUE AND profile_slot IN ('P1', 'P2')
             """
         ).fetchall()
-    return jsonify(
-        [
-            {"slot": row[2], "username": row[0], "displayName": row[1] or row[0]}
-            for row in rows
-        ]
-    )
+    
+    profiles = []
+    for row in rows:
+        badge = calculate_badge(row[2])
+        profiles.append(
+            {
+                "slot": row[2],
+                "username": row[0],
+                "displayName": row[1] or row[0],
+                "color": row[3] or "#3b82f6",
+                "badge": badge,
+            }
+        )
+    return jsonify(profiles)
 
 
 @app.post("/api/users")
@@ -521,6 +557,7 @@ def create_user():
     display_name = (data.get("displayName") or username).strip()
     role = data.get("role") if data.get("role") in {"admin", "user"} else "user"
     profile_slot = data.get("profileSlot") or None
+    color = data.get("color") or "#3b82f6"
     if profile_slot not in {None, "", "P1", "P2"}:
         return jsonify({"error": "Perfil invalido"}), 400
     profile_slot = profile_slot or None
@@ -548,18 +585,18 @@ def create_user():
                 conn.execute(
                     """
                     UPDATE users
-                    SET password_hash = %s, display_name = %s, role = %s, active = TRUE, profile_slot = %s
+                    SET password_hash = %s, display_name = %s, role = %s, active = TRUE, profile_slot = %s, color = %s
                     WHERE username = %s
                     """,
-                    (generate_password_hash(password), display_name, role, profile_slot, username),
+                    (generate_password_hash(password), display_name, role, profile_slot, color, username),
                 )
             else:
                 conn.execute(
                     """
-                    INSERT INTO users (username, password_hash, display_name, role, active, profile_slot)
-                    VALUES (%s, %s, %s, %s, TRUE, %s)
+                    INSERT INTO users (username, password_hash, display_name, role, active, profile_slot, color)
+                    VALUES (%s, %s, %s, %s, TRUE, %s, %s)
                     """,
-                    (username, generate_password_hash(password), display_name, role, profile_slot),
+                    (username, generate_password_hash(password), display_name, role, profile_slot, color),
                 )
     return jsonify({"success": True})
 

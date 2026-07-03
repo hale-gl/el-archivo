@@ -1197,6 +1197,33 @@ a:focus-visible{
   border-radius:7px;
   padding:9px 10px;
 }
+.user-row.inactive{
+  opacity:0.5;
+}
+.badge{
+  display:inline-block;
+  font-size:11px;
+  padding:3px 8px;
+  border-radius:999px;
+  font-weight:600;
+  margin-left:8px;
+}
+.badge-bronce{
+  background:linear-gradient(135deg, #cd7f32, #b87333);
+  color:#fff;
+}
+.badge-plata{
+  background:linear-gradient(135deg, #c0c0c0, #a8a8a8);
+  color:#1a1a1a;
+}
+.badge-oro{
+  background:linear-gradient(135deg, #ffd700, #ffb700);
+  color:#1a1a1a;
+}
+.badge-diamante{
+  background:linear-gradient(135deg, #b9f2ff, #7dd3fc);
+  color:#1a1a1a;
+}
 .user-row strong{
   display:block;
   color:var(--ink);

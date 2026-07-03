@@ -315,6 +315,7 @@ function renderUsers(users) {
       <div>
         <strong>${escapeHtml(user.displayName || user.username)}</strong>
         <span>${escapeHtml(user.username)} · ${escapeHtml(user.role)} · ${user.active ? 'activo' : 'inactivo'} · ${slotLabel(user.profileSlot)}</span>
+        ${user.badge ? `<span class="badge badge-${user.badge.level}">${escapeHtml(user.badge.label)}</span>` : ''}
       </div>
       ${user.active && user.username !== currentSession?.username
         ? `<button type="button" class="link-btn danger" data-user-disable="${user.id}">Desactivar</button>`
@@ -354,6 +355,7 @@ async function saveUser(event) {
     password: document.getElementById('u-password').value,
     role: document.getElementById('u-role').value,
     profileSlot: document.getElementById('u-slot').value || null,
+    color: document.getElementById('u-color').value || '#3b82f6',
   };
   const res = await fetch('/api/users', {
     method: 'POST',
@@ -366,6 +368,7 @@ async function saveUser(event) {
     return;
   }
   userForm.reset();
+  document.getElementById('u-color').value = '#3b82f6';
   showToast('Usuario guardado');
   await openUsersPanel();
   await loadProfiles();
@@ -407,6 +410,18 @@ async function loadProfiles() {
       const profile = bySlot[slot];
       const label = profile ? profile.displayName : (slot === 'P1' ? 'Persona 1' : 'Persona 2');
       btn.textContent = label;
+      if (profile && profile.color) {
+        btn.style.backgroundColor = profile.color;
+        btn.style.color = getContrastColor(profile.color);
+      } else {
+        btn.style.backgroundColor = '';
+        btn.style.color = '';
+      }
+      if (profile && profile.badge) {
+        btn.title = `${profile.badge.label} (${profile.badge.count} series/anime)`;
+      } else {
+        btn.title = '';
+      }
     });
     if (whoInput) {
       Array.from(whoInput.options).forEach(opt => {
@@ -419,6 +434,15 @@ async function loadProfiles() {
   } catch (e) {
     console.error('No se pudieron cargar los perfiles', e);
   }
+}
+
+function getContrastColor(hexcolor) {
+  if (!hexcolor) return '';
+  const r = parseInt(hexcolor.slice(1, 3), 16);
+  const g = parseInt(hexcolor.slice(3, 5), 16);
+  const b = parseInt(hexcolor.slice(5, 7), 16);
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  return (yiq >= 128) ? '#000000' : '#ffffff';
 }
 
 /* ============================================================
