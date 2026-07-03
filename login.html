@@ -19,7 +19,32 @@
         </div>
         <div class="field">
           <label for="loginPassword">Contrasena</label>
-          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+          <div class="password-wrap">
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+            <button type="button" class="pw-toggle" id="pwToggle" aria-label="Mostrar contrasena" aria-pressed="false">
+              <svg id="dinoIcon" class="dino" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <polygon class="dino-spike" points="16,16 20,5 25,16"></polygon>
+                <polygon class="dino-spike" points="27,13 32,2 37,13"></polygon>
+                <polygon class="dino-spike" points="39,16 44,5 48,16"></polygon>
+                <ellipse class="dino-head" cx="32" cy="35" rx="23" ry="20"></ellipse>
+                <ellipse class="dino-snout" cx="32" cy="47" rx="11" ry="6"></ellipse>
+                <circle class="dino-nostril" cx="27" cy="47" r="1.4"></circle>
+                <circle class="dino-nostril" cx="37" cy="47" r="1.4"></circle>
+                <circle class="dino-eye" cx="22" cy="31" r="7"></circle>
+                <circle class="dino-eye" cx="42" cy="31" r="7"></circle>
+                <circle class="dino-pupil" cx="22" cy="31" r="3.2"></circle>
+                <circle class="dino-pupil" cx="42" cy="31" r="3.2"></circle>
+                <g class="dino-hand dino-hand-left">
+                  <ellipse cx="22" cy="31" rx="9.5" ry="8.5"></ellipse>
+                  <path class="dino-claw" d="M14,29 l-4,-2 M14,31 l-5,0 M14,33 l-4,2"></path>
+                </g>
+                <g class="dino-hand dino-hand-right">
+                  <ellipse cx="42" cy="31" rx="9.5" ry="8.5"></ellipse>
+                  <path class="dino-claw" d="M50,29 l4,-2 M50,31 l5,0 M50,33 l4,2"></path>
+                </g>
+              </svg>
+            </button>
+          </div>
         </div>
         <button class="btn-primary login-submit" type="submit">Entrar</button>
         <p class="login-error" id="loginError" role="alert"></p>
@@ -27,12 +52,23 @@
     </section>
   </main>
   <script>
+    const pwInput = document.getElementById('loginPassword');
+    const pwToggle = document.getElementById('pwToggle');
+    const dinoIcon = document.getElementById('dinoIcon');
+    pwToggle.addEventListener('click', () => {
+      const showing = pwInput.type === 'text';
+      pwInput.type = showing ? 'password' : 'text';
+      dinoIcon.classList.toggle('peeking', !showing);
+      pwToggle.setAttribute('aria-pressed', String(!showing));
+      pwToggle.setAttribute('aria-label', showing ? 'Mostrar contrasena' : 'Ocultar contrasena');
+    });
+
     const form = document.getElementById('loginForm');
     const error = document.getElementById('loginError');
     form.addEventListener('submit', async event => {
       event.preventDefault();
       error.textContent = '';
-      const button = form.querySelector('button');
+      const button = form.querySelector('.login-submit');
       button.disabled = true;
       try {
         const res = await fetch('/api/login', {

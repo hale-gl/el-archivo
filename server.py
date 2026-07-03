@@ -492,6 +492,28 @@ def get_users():
     )
 
 
+@app.get("/api/profiles")
+@login_required
+def get_profiles():
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT username, display_name
+            FROM users
+            WHERE active = TRUE AND role = 'user'
+            ORDER BY id ASC
+            LIMIT 2
+            """
+        ).fetchall()
+    slots = ["P1", "P2"]
+    return jsonify(
+        [
+            {"slot": slots[idx], "username": row[0], "displayName": row[1] or row[0]}
+            for idx, row in enumerate(rows)
+        ]
+    )
+
+
 @app.post("/api/users")
 @admin_required
 def create_user():
@@ -537,6 +559,17 @@ def disable_user(user_id):
         if row[0] == current_username:
             return jsonify({"error": "No puedes desactivar tu propio usuario"}), 400
         conn.execute("UPDATE users SET active = FALSE WHERE id = %s", (user_id,))
+    return jsonify({"success": True})
+
+
+@app.post("/api/users/<int:user_id>/activate")
+@admin_required
+def activate_user(user_id):
+    with connect() as conn:
+        row = conn.execute("SELECT id FROM users WHERE id = %s", (user_id,)).fetchone()
+        if not row:
+            return jsonify({"error": "Usuario no encontrado"}), 404
+        conn.execute("UPDATE users SET active = TRUE WHERE id = %s", (user_id,))
     return jsonify({"success": True})
 
 

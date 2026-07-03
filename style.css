@@ -1125,6 +1125,48 @@ a:focus-visible{
   letter-spacing:2px;
 }
 .login-form .field{ margin-bottom:14px; }
+.password-wrap{ position:relative; }
+.password-wrap input{ padding-right:52px; }
+.pw-toggle{
+  position:absolute;
+  top:50%;
+  right:4px;
+  transform:translateY(-50%);
+  width:40px;
+  height:40px;
+  padding:0;
+  background:transparent;
+  border:none;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:6px;
+  transition:background .15s;
+}
+.pw-toggle:hover{ background:rgba(212,162,76,0.08); }
+.pw-toggle:focus-visible{ outline:2px solid var(--gold); outline-offset:1px; }
+.dino{ width:32px; height:32px; overflow:visible; }
+.dino .dino-head{ fill:var(--jade); }
+.dino .dino-spike{ fill:var(--jade); }
+.dino .dino-snout{ fill:var(--jade-dim); }
+.dino .dino-nostril{ fill:rgba(0,0,0,0.35); }
+.dino .dino-eye{ fill:#f4f1e8; }
+.dino .dino-pupil{
+  fill:#1a1a1a;
+  opacity:0;
+  transform:scale(.4);
+  transform-origin:center;
+  transition:opacity .2s ease .15s, transform .2s ease .15s;
+}
+.dino.peeking .dino-pupil{ opacity:1; transform:scale(1); }
+.dino-hand{ transform-origin:50% 100%; transition:transform .35s cubic-bezier(.34,1.56,.64,1); }
+.dino-hand ellipse{ fill:var(--jade); stroke:var(--jade-dim); stroke-width:.5; }
+.dino-claw{ stroke:var(--jade-dim); stroke-width:1; fill:none; opacity:0; transition:opacity .2s ease .3s; }
+.dino.peeking .dino-hand-left{ transform:translate(-13px,-16px) rotate(-25deg); }
+.dino.peeking .dino-hand-right{ transform:translate(13px,-16px) rotate(25deg); }
+.dino.peeking .dino-claw{ opacity:1; }
+
 .login-submit{
   width:100%;
   margin-top:4px;

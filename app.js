@@ -318,10 +318,16 @@ function renderUsers(users) {
       ${user.active && user.username !== currentSession?.username
         ? `<button type="button" class="link-btn danger" data-user-disable="${user.id}">Desactivar</button>`
         : ''}
+      ${!user.active
+        ? `<button type="button" class="link-btn" data-user-activate="${user.id}">Activar</button>`
+        : ''}
     </div>
   `).join('');
   userList.querySelectorAll('[data-user-disable]').forEach(button => {
     button.addEventListener('click', () => disableUser(button.dataset.userDisable));
+  });
+  userList.querySelectorAll('[data-user-activate]').forEach(button => {
+    button.addEventListener('click', () => activateUser(button.dataset.userActivate));
   });
 }
 
@@ -360,6 +366,7 @@ async function saveUser(event) {
   userForm.reset();
   showToast('Usuario guardado');
   await openUsersPanel();
+  await loadProfiles();
 }
 
 async function disableUser(userId) {
@@ -372,6 +379,44 @@ async function disableUser(userId) {
   }
   showToast('Usuario desactivado');
   await openUsersPanel();
+  await loadProfiles();
+}
+
+async function activateUser(userId) {
+  const res = await fetch(`/api/users/${userId}/activate`, { method: 'POST' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    showToast(data.error || 'No se pudo activar', 'error');
+    return;
+  }
+  showToast('Usuario activado');
+  await openUsersPanel();
+  await loadProfiles();
+}
+
+async function loadProfiles() {
+  try {
+    const res = await fetch('/api/profiles');
+    if (!res.ok) return;
+    const profiles = await res.json();
+    const bySlot = Object.fromEntries(profiles.map(p => [p.slot, p]));
+    document.querySelectorAll('.who-btn[data-who]').forEach(btn => {
+      const slot = btn.dataset.who;
+      const profile = bySlot[slot];
+      const label = profile ? profile.displayName : (slot === 'P1' ? 'Persona 1' : 'Persona 2');
+      btn.textContent = label;
+    });
+    if (whoInput) {
+      Array.from(whoInput.options).forEach(opt => {
+        if (opt.value === 'P1' || opt.value === 'P2') {
+          const profile = bySlot[opt.value];
+          opt.textContent = profile ? profile.displayName : (opt.value === 'P1' ? 'Persona 1' : 'Persona 2');
+        }
+      });
+    }
+  } catch (e) {
+    console.error('No se pudieron cargar los perfiles', e);
+  }
 }
 
 /* ============================================================
@@ -1158,7 +1203,10 @@ document.getElementById('coverRemoveBtn').addEventListener('click', async () => 
    INIT
    ============================================================ */
 async function init() {
-  if (await loadSession()) await load();
+  if (await loadSession()) {
+    await loadProfiles();
+    await load();
+  }
 }
 
 init();
