@@ -65,6 +65,13 @@ const userList = document.getElementById('userList');
 const userForm = document.getElementById('userForm');
 const sidebarSearch = document.getElementById('sidebarSearch');
 const sidebarSearchBtn = document.getElementById('sidebarSearchBtn');
+const sidebarGlobalSearchBtn = document.getElementById('sidebarGlobalSearchBtn');
+const globalSearchOverlay = document.getElementById('globalSearchOverlay');
+const globalSearchInput = document.getElementById('globalSearchInput');
+const globalSearchCategory = document.getElementById('globalSearchCategory');
+const globalSearchExecuteBtn = document.getElementById('globalSearchExecuteBtn');
+const globalSearchResults = document.getElementById('globalSearchResults');
+const globalSearchCancelBtn = document.getElementById('globalSearchCancelBtn');
 
 /* ============================================================
    HELPERS
@@ -519,6 +526,100 @@ if (sidebarSearchBtn) {
       render();
     }
   });
+}
+
+if (sidebarGlobalSearchBtn) {
+  sidebarGlobalSearchBtn.addEventListener('click', () => {
+    globalSearchOverlay.classList.add('show');
+    if (sidebarSearch && sidebarSearch.value) {
+      globalSearchInput.value = sidebarSearch.value;
+    }
+  });
+}
+
+if (globalSearchCancelBtn) {
+  globalSearchCancelBtn.addEventListener('click', () => {
+    globalSearchOverlay.classList.remove('show');
+    globalSearchResults.innerHTML = '';
+    globalSearchInput.value = '';
+  });
+}
+
+if (globalSearchExecuteBtn) {
+  globalSearchExecuteBtn.addEventListener('click', executeGlobalSearch);
+}
+
+async function executeGlobalSearch() {
+  const query = globalSearchInput.value.trim();
+  const category = globalSearchCategory.value;
+  
+  if (query.length < 2) {
+    globalSearchResults.innerHTML = '<div class="metadata-empty">Escribe al menos 2 caracteres.</div>';
+    return;
+  }
+  
+  globalSearchExecuteBtn.disabled = true;
+  globalSearchResults.innerHTML = '<div class="metadata-status">Buscando...</div>';
+  
+  try {
+    const params = new URLSearchParams({ q: query, category });
+    const res = await fetch(`/api/metadata/search?${params.toString()}`);
+    if (!res.ok) throw new Error('metadata');
+    const data = await res.json();
+    renderGlobalSearchResults(data.results || []);
+  } catch (e) {
+    console.error('No se pudo buscar online', e);
+    globalSearchResults.innerHTML = '<div class="metadata-empty">No se pudo buscar online.</div>';
+  } finally {
+    globalSearchExecuteBtn.disabled = false;
+  }
+}
+
+function renderGlobalSearchResults(results) {
+  if (!results.length) {
+    globalSearchResults.innerHTML = '<div class="metadata-empty">No se encontraron resultados.</div>';
+    return;
+  }
+  
+  globalSearchResults.innerHTML = results.map((item, index) => `
+    <div class="global-search-result">
+      <span class="global-search-thumb">
+        ${item.image ? `<img src="${escapeHtml(item.image)}" alt="">` : '<span></span>'}
+      </span>
+      <span class="global-search-info">
+        <strong>${escapeHtml(item.title || 'Sin titulo')}</strong>
+        <small>${escapeHtml(item.year || '')} · ${escapeHtml(item.sourceLabel || '')}</small>
+      </span>
+      <button type="button" class="btn-primary add-direct-btn" data-result-index="${index}">Añadir</button>
+    </div>
+  `).join('');
+  
+  globalSearchResults.querySelectorAll('.add-direct-btn').forEach(button => {
+    button.addEventListener('click', () => addDirectToCatalog(results[button.dataset.resultIndex]));
+  });
+}
+
+async function addDirectToCatalog(item) {
+  const newItem = {
+    id: uid(),
+    title: item.title || 'Sin titulo',
+    image: item.image || '',
+    link: item.link || '',
+    category: item.category,
+    subtype: item.category === 'lectura' ? (item.title?.toLowerCase().includes('manhwa') ? 'manhwa' : 'manga') : null,
+    status: 'pendiente',
+    who: currentWho,
+    seasons: item.seasons || [],
+    volumes: [],
+    updatedAt: Date.now()
+  };
+  
+  catalog.push(newItem);
+  await save('Añadido al catalogo ✓');
+  globalSearchOverlay.classList.remove('show');
+  globalSearchResults.innerHTML = '';
+  globalSearchInput.value = '';
+  render();
 }
 
 /* ============================================================

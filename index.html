@@ -13,10 +13,17 @@
 <aside class="sidebar">
   <div class="sidebar-search">
     <input type="text" id="sidebarSearch" placeholder="Buscar serie..." aria-label="Buscar serie">
-    <button type="button" id="sidebarSearchBtn" aria-label="Buscar">
+    <button type="button" id="sidebarSearchBtn" aria-label="Buscar local">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8"></circle>
         <path d="m21 21-4.35-4.35"></path>
+      </svg>
+    </button>
+    <button type="button" id="sidebarGlobalSearchBtn" aria-label="Buscar global" title="Buscar en APIs externas">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="m21 21-4.35-4.35"></path>
+        <path d="M11 8v6M8 11h6" stroke-width="2"></path>
       </svg>
     </button>
   </div>
@@ -207,6 +214,31 @@
       <button type="button" class="btn-secondary" id="coverCancelBtn">Cancelar</button>
       <button type="button" class="btn-secondary" id="coverRemoveBtn" style="color:var(--crimson);border-color:var(--crimson-dim);">Quitar portada</button>
       <button type="button" class="btn-primary" id="coverSaveBtn">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="globalSearchOverlay">
+  <div class="modal">
+    <h2>Busqueda Global</h2>
+    <div class="field">
+      <label>Termino de busqueda</label>
+      <input type="text" id="globalSearchInput" placeholder="Ej. Cowboy Bebop">
+    </div>
+    <div class="field">
+      <label>Categoria</label>
+      <select id="globalSearchCategory">
+        <option value="series">Series</option>
+        <option value="pelicula">Peliculas</option>
+        <option value="drama">Drama</option>
+        <option value="anime">Anime</option>
+        <option value="lectura">Manga / Manhwa</option>
+      </select>
+    </div>
+    <button type="button" class="btn-primary" id="globalSearchExecuteBtn">Buscar</button>
+    <div id="globalSearchResults" class="global-search-results"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" id="globalSearchCancelBtn">Cerrar</button>
     </div>
   </div>
 </div>

@@ -118,6 +118,13 @@ a:focus-visible{
   outline:2px solid var(--gold);
   outline-offset:2px;
 }
+.sidebar-search button:last-child{
+  color:var(--jade);
+}
+.sidebar-search button:last-child:hover{
+  background:rgba(78,157,124,0.08);
+  border-color:var(--jade-dim);
+}
 
 /* ============================================================
    HEADER / MARQUEE
@@ -1291,6 +1298,60 @@ a:focus-visible{
 .badge-diamante{
   background:linear-gradient(135deg, #b9f2ff, #7dd3fc);
   color:#1a1a1a;
+}
+.global-search-results{
+  margin-top:16px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-height:400px;
+  overflow-y:auto;
+}
+.global-search-result{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:7px;
+  background:var(--panel-2);
+}
+.global-search-thumb{
+  width:40px;
+  height:56px;
+  border-radius:4px;
+  overflow:hidden;
+  background:var(--panel-3);
+  flex-shrink:0;
+}
+.global-search-thumb img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+.global-search-info{
+  flex:1;
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.global-search-info strong{
+  font-size:13px;
+  color:var(--ink);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.global-search-info small{
+  font-size:11px;
+  color:var(--dim);
+}
+.add-direct-btn{
+  padding:6px 12px;
+  font-size:12px;
+  border-radius:5px;
+  flex-shrink:0;
 }
 .user-row strong{
   display:block;
