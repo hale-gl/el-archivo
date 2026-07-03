@@ -63,6 +63,8 @@ const usersBtn = document.getElementById('usersBtn');
 const userOverlay = document.getElementById('userOverlay');
 const userList = document.getElementById('userList');
 const userForm = document.getElementById('userForm');
+const sidebarSearch = document.getElementById('sidebarSearch');
+const sidebarSearchBtn = document.getElementById('sidebarSearchBtn');
 
 /* ============================================================
    HELPERS
@@ -501,6 +503,22 @@ function getContrastColor(hexcolor) {
   const b = parseInt(hexcolor.slice(5, 7), 16);
   const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
   return (yiq >= 128) ? '#000000' : '#ffffff';
+}
+
+if (sidebarSearch) {
+  sidebarSearch.addEventListener('input', (e) => {
+    searchTerm = e.target.value.trim();
+    render();
+  });
+}
+
+if (sidebarSearchBtn) {
+  sidebarSearchBtn.addEventListener('click', () => {
+    if (sidebarSearch) {
+      searchTerm = sidebarSearch.value.trim();
+      render();
+    }
+  });
 }
 
 /* ============================================================
