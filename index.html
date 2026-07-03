@@ -50,6 +50,20 @@
     </div>
   </section>
 
+  <section class="pulse-panel" id="pulsePanel" style="display:none;" aria-label="Resumen interactivo">
+    <div class="pulse-copy">
+      <span class="pulse-kicker" id="pulseKicker">Tu archivo ahora</span>
+      <h2 id="pulseTitle">Elige algo para seguir</h2>
+      <p id="pulseMeta">Cuando tengas titulos guardados, aqui veras una sugerencia y el progreso.</p>
+      <div class="pulse-meter" aria-hidden="true"><span id="pulseMeter"></span></div>
+    </div>
+    <div class="pulse-stats" id="pulseStats"></div>
+    <div class="pulse-actions">
+      <button type="button" class="pulse-secondary" id="pickNextBtn">Sorprendeme</button>
+      <button type="button" class="pulse-primary" id="focusPickBtn">Ver carta</button>
+    </div>
+  </section>
+
   <div class="grid" id="grid"></div>
   <div class="empty" id="emptyState" style="display:none;">
     <b>Aun no hay nada aqui</b>

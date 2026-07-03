@@ -34,6 +34,7 @@ let expandedCards = new Set();
 let imageCleared = false;
 let onlineMatches = [];
 let currentSession = null;
+let featuredId = null;
 
 /* ============================================================
    DOM REFS
@@ -73,6 +74,14 @@ const globalSearchCategory = document.getElementById('globalSearchCategory');
 const globalSearchExecuteBtn = document.getElementById('globalSearchExecuteBtn');
 const globalSearchResults = document.getElementById('globalSearchResults');
 const globalSearchCancelBtn = document.getElementById('globalSearchCancelBtn');
+const pulsePanel = document.getElementById('pulsePanel');
+const pulseKicker = document.getElementById('pulseKicker');
+const pulseTitle = document.getElementById('pulseTitle');
+const pulseMeta = document.getElementById('pulseMeta');
+const pulseMeter = document.getElementById('pulseMeter');
+const pulseStats = document.getElementById('pulseStats');
+const pickNextBtn = document.getElementById('pickNextBtn');
+const focusPickBtn = document.getElementById('focusPickBtn');
 
 /* ============================================================
    HELPERS
@@ -159,6 +168,35 @@ function normalizeLinearProgress(item) {
   if (!isLinearCategory(item.category)) return item;
   const entry = linearEntry(item, 'seasons');
   return { ...item, seasons: [entry], volumes: [] };
+}
+
+function progressOf(item) {
+  const cat = CATS[item.category];
+  if (!cat || cat.mode === 'watched') {
+    const status = computeItemStatus(item);
+    return status === 'completado' ? 100 : status === 'en-curso' ? 50 : 0;
+  }
+
+  let watched = 0;
+  let total = 0;
+  cat.tracks.forEach(track => {
+    if (track.linear) {
+      const entry = linearEntry(item, track.key);
+      watched += entry.watched || 0;
+      total += entry.total || 0;
+      return;
+    }
+    (item[track.key] || []).forEach(entry => {
+      watched += entry.watched || 0;
+      total += entry.total || 0;
+    });
+  });
+  if (!total) return computeItemStatus(item) === 'completado' ? 100 : 0;
+  return Math.min(100, Math.round((watched / total) * 100));
+}
+
+function scopeItems() {
+  return catalog.filter(i => matchesCurrentProfile(i) && (currentTab === 'todo' || i.category === currentTab));
 }
 
 function parseNonNegativeInt(value) {
@@ -664,10 +702,74 @@ function filtered() {
 function render() {
   buildTabs();
   renderCoverBanner();
+  renderPulsePanel();
   const items = filtered();
   emptyState.style.display = items.length ? 'none' : 'block';
   grid.innerHTML = items.map(i => renderCard(i)).join('');
   bindCardEvents();
+}
+
+function renderPulsePanel() {
+  const scoped = scopeItems();
+  if (!scoped.length) {
+    pulsePanel.style.display = 'none';
+    featuredId = null;
+    return;
+  }
+
+  pulsePanel.style.display = 'grid';
+  const stats = STATUS_ORDER.reduce((acc, status) => {
+    acc[status] = scoped.filter(item => computeItemStatus(item) === status).length;
+    return acc;
+  }, {});
+
+  pulseStats.innerHTML = [
+    { status: '', label: 'Todo', value: scoped.length },
+    { status: 'pendiente', label: 'Pendiente', value: stats['pendiente'] || 0 },
+    { status: 'en-curso', label: 'En curso', value: stats['en-curso'] || 0 },
+    { status: 'completado', label: 'Terminado', value: stats['completado'] || 0 },
+  ].map(stat => `
+    <button class="pulse-stat ${currentStatus === stat.status ? 'active' : ''}" data-pulse-status="${stat.status}">
+      <strong>${stat.value}</strong>
+      <span>${stat.label}</span>
+    </button>
+  `).join('');
+
+  const visible = filtered();
+  const pool = visible.length ? visible : scoped;
+  const preferred = pool.filter(item => computeItemStatus(item) === 'en-curso');
+  const fallback = pool.filter(item => computeItemStatus(item) !== 'completado');
+  const current = pool.find(item => item.id === featuredId);
+  const pick = current || preferred[0] || fallback[0] || pool[0];
+  featuredId = pick ? pick.id : null;
+
+  const label = currentTab === 'todo' ? 'Todo el archivo' : CATS[currentTab].label;
+  const profile = currentWho || 'Compartido';
+  pulseKicker.textContent = `${label} / ${profile}`;
+  pulseTitle.textContent = pick ? pick.title : 'Sin coincidencias';
+  if (pick) {
+    const progress = progressOf(pick);
+    const cat = CATS[pick.category];
+    const track = cat.tracks[0];
+    const summary = track ? trackSummary(pick, track) : statusLabel(computeItemStatus(pick));
+    pulseMeta.textContent = `${cat.label} · ${statusLabel(computeItemStatus(pick))} · ${summary}`;
+    pulseMeter.style.width = `${progress}%`;
+  } else {
+    pulseMeta.textContent = 'Cambia filtros o agrega un titulo nuevo.';
+    pulseMeter.style.width = '0%';
+  }
+
+  pulseStats.querySelectorAll('[data-pulse-status]').forEach(button => {
+    button.addEventListener('click', () => setStatusFilter(button.dataset.pulseStatus));
+  });
+}
+
+function setStatusFilter(status) {
+  currentStatus = status || '';
+  document.querySelectorAll('#statusFilter .chip').forEach(chip => {
+    chip.classList.toggle('active', chip.dataset.status === currentStatus);
+  });
+  render();
 }
 
 function renderCoverBanner() {
@@ -713,7 +815,7 @@ function renderCard(i) {
     </div>`;
 
   return `
-    <div class="card">
+    <div class="card" data-card-id="${i.id}">
       <div class="cat-tag">${i.category === 'lectura' && i.subtype ? i.subtype : cat.label}</div>
       ${posterHtml}
       <div class="card-body">
@@ -816,6 +918,35 @@ function bindCardEvents() {
   grid.querySelectorAll('[data-act="linear-watch"]').forEach(b => b.addEventListener('click', () => adjustLinearWatched(b.dataset.id, b.dataset.track, +b.dataset.delta)));
   grid.querySelectorAll('[data-act="linear-set-watched"]').forEach(input => input.addEventListener('change', () => setLinearWatched(input.dataset.id, input.dataset.track, input.value)));
   grid.querySelectorAll('[data-act="linear-status"]').forEach(b => b.addEventListener('click', () => cycleLinearStatus(b.dataset.id, b.dataset.track)));
+}
+
+function pickFeaturedItem() {
+  const visible = filtered();
+  const pool = visible.length ? visible : scopeItems();
+  const candidates = pool.filter(item => computeItemStatus(item) !== 'completado');
+  const options = candidates.length ? candidates : pool;
+  if (!options.length) return;
+  const pick = options[Math.floor(Math.random() * options.length)];
+  featuredId = pick.id;
+  render();
+  showToast(`Elegido: ${pick.title}`);
+}
+
+function focusFeaturedItem() {
+  if (!featuredId) return;
+  let card = grid.querySelector(`[data-card-id="${featuredId}"]`);
+  if (!card) {
+    currentStatus = '';
+    searchTerm = '';
+    if (searchInput) searchInput.value = '';
+    syncSearchControls();
+    render();
+    card = grid.querySelector(`[data-card-id="${featuredId}"]`);
+  }
+  if (!card) return;
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  card.classList.add('pulse-highlight');
+  setTimeout(() => card.classList.remove('pulse-highlight'), 1200);
 }
 
 /* ============================================================
@@ -1367,11 +1498,11 @@ clearSearchBtn.addEventListener('click', () => {
 
 document.getElementById('statusFilter').addEventListener('click', e => {
   if (!e.target.classList.contains('chip')) return;
-  document.querySelectorAll('#statusFilter .chip').forEach(c => c.classList.remove('active'));
-  e.target.classList.add('active');
-  currentStatus = e.target.dataset.status;
-  render();
+  setStatusFilter(e.target.dataset.status);
 });
+
+pickNextBtn.addEventListener('click', pickFeaturedItem);
+focusPickBtn.addEventListener('click', focusFeaturedItem);
 
 document.querySelectorAll('.who-btn[data-who]').forEach(b => {
   b.addEventListener('click', () => {
