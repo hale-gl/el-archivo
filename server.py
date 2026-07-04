@@ -131,8 +131,18 @@ def admin_required(fn):
     return wrapper
 
 
-def fetch_json(url, headers=None):
-    req = Request(url, headers=headers or {"User-Agent": "ElArchivo/1.0"})
+def fetch_json(url, headers=None, payload=None):
+    data = None
+    request_headers = headers or {"User-Agent": "ElArchivo/1.0"}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        request_headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "ElArchivo/1.0",
+            **request_headers,
+        }
+    req = Request(url, data=data, headers=request_headers)
     try:
         with urlopen(req, timeout=8) as response:
             charset = response.headers.get_content_charset() or "utf-8"
@@ -158,6 +168,47 @@ def tmdb_url(path, params=None):
 
 def tmdb_image(path):
     return f"{TMDB_IMAGE_BASE}{path}" if path else ""
+
+
+def clean_html(value):
+    if not value:
+        return ""
+    text = str(value)
+    for old, new in (
+        ("<br>", "\n"),
+        ("<br/>", "\n"),
+        ("<br />", "\n"),
+        ("</p>", "\n"),
+        ("&quot;", '"'),
+        ("&#039;", "'"),
+        ("&amp;", "&"),
+    ):
+        text = text.replace(old, new)
+    while "<" in text and ">" in text:
+        start = text.find("<")
+        end = text.find(">", start)
+        if end == -1:
+            break
+        text = text[:start] + text[end + 1 :]
+    return " ".join(text.split())
+
+
+def normalized_title(value):
+    return "".join(ch.lower() for ch in (value or "") if ch.isalnum())
+
+
+def reading_subtype(country):
+    return {"KR": "manhwa", "CN": "manhua", "TW": "manhua"}.get(country, "manga")
+
+
+def source_rank(source):
+    return {
+        "anilist": 0,
+        "tmdb": 1,
+        "mangadex": 2,
+        "tvmaze": 3,
+        "jikan": 4,
+    }.get(source, 9)
 
 
 def compact_providers(data):
@@ -276,6 +327,65 @@ def tmdb_results(query, category):
     return results
 
 
+def anilist_results(query, category):
+    if category not in {"anime", "lectura"}:
+        return []
+    media_type = "ANIME" if category == "anime" else "MANGA"
+    graphql = """
+    query ($search: String, $type: MediaType) {
+      Page(page: 1, perPage: 6) {
+        media(search: $search, type: $type, isAdult: false, sort: SEARCH_MATCH) {
+          id
+          title { romaji english native }
+          coverImage { extraLarge large }
+          siteUrl
+          description(asHtml: false)
+          startDate { year }
+          episodes
+          chapters
+          volumes
+          format
+          countryOfOrigin
+          averageScore
+          status
+        }
+      }
+    }
+    """
+    data = fetch_json(
+        "https://graphql.anilist.co",
+        payload={"query": graphql, "variables": {"search": query, "type": media_type}},
+    )
+    media = (((data or {}).get("data") or {}).get("Page") or {}).get("media") or []
+    results = []
+    for item in media:
+        title = ((item.get("title") or {}).get("english") or (item.get("title") or {}).get("romaji") or "")
+        total = item.get("episodes") if category == "anime" else item.get("chapters")
+        country = item.get("countryOfOrigin") or ""
+        results.append(
+            {
+                "source": "anilist",
+                "sourceLabel": "AniList",
+                "id": item.get("id"),
+                "category": category,
+                "subtype": reading_subtype(country) if category == "lectura" else None,
+                "title": title,
+                "year": str(((item.get("startDate") or {}).get("year")) or ""),
+                "image": ((item.get("coverImage") or {}).get("extraLarge") or (item.get("coverImage") or {}).get("large") or ""),
+                "link": item.get("siteUrl") or "",
+                "summary": clean_html(item.get("description") or ""),
+                "seasons": [{"number": 1, "total": total}] if total else [],
+                "total": total,
+                "providers": [],
+                "score": item.get("averageScore") or 0,
+                "format": item.get("format") or "",
+                "origin": country,
+                "status": item.get("status") or "",
+            }
+        )
+    return results
+
+
 def jikan_results(query, category):
     if category not in {"anime", "lectura"}:
         return []
@@ -297,6 +407,7 @@ def jikan_results(query, category):
                 "sourceLabel": "Jikan",
                 "id": item.get("mal_id"),
                 "category": category,
+                "subtype": "manga" if category == "lectura" else None,
                 "title": title,
                 "year": str(year or ""),
                 "image": (((item.get("images") or {}).get("jpg") or {}).get("large_image_url") or ""),
@@ -305,6 +416,8 @@ def jikan_results(query, category):
                 "seasons": [{"number": 1, "total": total}] if total else [],
                 "total": total,
                 "providers": [],
+                "score": item.get("score") or 0,
+                "format": item.get("type") or "",
             }
         )
     return results
@@ -364,12 +477,14 @@ def mangadex_results(query, category):
             continue
         total = mangadex_total_chapters(manga_id)
         title = localized_text(attrs.get("title")) or "Sin titulo"
+        original_language = attrs.get("originalLanguage") or ""
         results.append(
             {
                 "source": "mangadex",
                 "sourceLabel": "MangaDex",
                 "id": manga_id,
                 "category": category,
+                "subtype": {"ko": "manhwa", "zh": "manhua", "zh-hk": "manhua"}.get(original_language, "manga"),
                 "title": title,
                 "year": str(attrs.get("year") or ""),
                 "image": mangadex_cover(manga_id, item.get("relationships")),
@@ -378,6 +493,8 @@ def mangadex_results(query, category):
                 "seasons": [{"number": 1, "total": total}] if total else [],
                 "total": total,
                 "providers": [],
+                "score": 0,
+                "format": attrs.get("publicationDemographic") or "",
             }
         )
     return results
@@ -391,24 +508,34 @@ def metadata_search():
     if len(query) < 2:
         return jsonify({"results": [], "message": "Escribe al menos 2 caracteres"})
 
-    results = []
-    results.extend(tmdb_results(query, category))
-    if not results:
-        results.extend(tvmaze_results(query, category))
     if category in {"anime", "lectura"}:
+        results = anilist_results(query, category)
         if category == "lectura":
             results.extend(mangadex_results(query, category))
         results.extend(jikan_results(query, category))
+    else:
+        results = tmdb_results(query, category)
+        results.extend(tvmaze_results(query, category))
 
-    seen = set()
+    seen_ids = set()
+    seen_titles = set()
     unique = []
-    for item in results:
-        key = (item.get("source"), item.get("id"))
-        if key in seen:
+    for item in sorted(results, key=lambda result: (source_rank(result.get("source")), -(result.get("score") or 0))):
+        source_key = (item.get("source"), item.get("id"))
+        title_key = normalized_title(item.get("title"))
+        if source_key in seen_ids or (title_key and title_key in seen_titles):
             continue
-        seen.add(key)
+        seen_ids.add(source_key)
+        if title_key:
+            seen_titles.add(title_key)
         unique.append(item)
-    return jsonify({"results": unique[:6], "hasTmdb": bool(TMDB_API_KEY)})
+    return jsonify(
+        {
+            "results": unique[:8],
+            "hasTmdb": bool(TMDB_API_KEY),
+            "sources": sorted({item.get("sourceLabel") for item in unique if item.get("sourceLabel")}),
+        }
+    )
 
 
 @app.get("/style.css")

@@ -610,6 +610,12 @@ async function executeGlobalSearch() {
     if (!res.ok) throw new Error('metadata');
     const data = await res.json();
     renderGlobalSearchResults(data.results || []);
+    if (data.sources?.length) {
+      globalSearchResults.insertAdjacentHTML(
+        'afterbegin',
+        `<div class="metadata-status">Fuentes: ${escapeHtml(data.sources.join(', '))}</div>`
+      );
+    }
   } catch (e) {
     console.error('No se pudo buscar online', e);
     globalSearchResults.innerHTML = '<div class="metadata-empty">No se pudo buscar online.</div>';
@@ -631,7 +637,7 @@ function renderGlobalSearchResults(results) {
       </span>
       <span class="global-search-info">
         <strong>${escapeHtml(item.title || 'Sin titulo')}</strong>
-        <small>${escapeHtml(item.year || '')} · ${escapeHtml(item.sourceLabel || '')}</small>
+        <small>${escapeHtml(metadataDetailText(item))}</small>
       </span>
       <button type="button" class="btn-primary add-direct-btn" data-result-index="${index}">Añadir</button>
     </div>
@@ -649,7 +655,7 @@ async function addDirectToCatalog(item) {
     image: item.image || '',
     link: item.link || '',
     category: item.category,
-    subtype: item.category === 'lectura' ? (item.title?.toLowerCase().includes('manhwa') ? 'manhwa' : 'manga') : null,
+    subtype: item.category === 'lectura' ? (item.subtype || 'manga') : null,
     status: 'pendiente',
     who: currentWho,
     seasons: item.seasons || [],
@@ -1096,7 +1102,11 @@ function metadataDetailText(item) {
   if (item.year) parts.push(item.year);
   if (item.seasons?.length) parts.push(`${item.seasons.length} temporadas`);
   if (item.total) parts.push(`${item.total} capitulos`);
+  if (item.subtype) parts.push(item.subtype);
+  if (item.format) parts.push(item.format);
+  if (item.score) parts.push(`${item.score}/100`);
   if (item.providers?.length) parts.push(item.providers.join(', '));
+  if (item.sourceLabel) parts.push(item.sourceLabel);
   return parts.join(' · ') || item.sourceLabel || '';
 }
 
@@ -1144,7 +1154,7 @@ async function searchOnlineMetadata() {
     const data = await res.json();
     renderMetadataResults(data.results || []);
     metadataStatus.textContent = data.results?.length
-      ? 'Elige el resultado correcto.'
+      ? `Elige el resultado correcto. ${data.sources?.length ? 'Fuentes: ' + data.sources.join(', ') : ''}`
       : 'No encontre resultados.';
   } catch (e) {
     console.error('No se pudo buscar metadata', e);
@@ -1182,6 +1192,9 @@ function applyMetadataResult(item) {
 
   const category = document.getElementById('f-category').value;
   const cat = CATS[category];
+  if (category === 'lectura' && item.subtype) {
+    document.getElementById('f-subtype').value = item.subtype;
+  }
   if (cat?.mode === 'seasons') {
     syncFormVisibility();
     cat.tracks.forEach(track => {
