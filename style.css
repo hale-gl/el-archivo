@@ -120,12 +120,23 @@ a:focus-visible{
   border-radius:20px;
   cursor:pointer;
   transition:.15s;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
 }
 .who-btn:hover{ border-color:var(--gold-dim); color:var(--ink); }
 .who-btn.active{
   border-color:var(--gold);
   color:var(--gold);
   background:rgba(212,162,76,0.08);
+}
+.who-avatar{
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  object-fit:cover;
+  border:1px solid rgba(255,255,255,0.18);
+  flex:0 0 auto;
 }
 .logout-btn{
   margin-left:8px;
@@ -241,6 +252,25 @@ a:focus-visible{
   transition:.15s;
 }
 .cover-edit-btn:hover{ color:var(--gold); border-color:var(--gold-dim); }
+.cover-cropper{
+  margin-top:10px;
+  display:grid;
+  gap:10px;
+}
+.cover-crop-preview{
+  height:150px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  overflow:hidden;
+  background:var(--panel-3);
+}
+.cover-crop-preview img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  object-position:50% 18%;
+  display:block;
+}
 
 /* ============================================================
    TOOLBAR
@@ -1456,6 +1486,48 @@ a:focus-visible{
 }
 .user-row.inactive{
   opacity:0.5;
+}
+.avatar-preview{
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:rgba(16,18,24,0.48);
+  padding:10px;
+}
+.avatar-preview img{
+  width:72px;
+  height:72px;
+  border-radius:50%;
+  object-fit:cover;
+  border:1px solid rgba(255,255,255,0.16);
+  background:var(--panel-3);
+}
+.user-main{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+}
+.user-avatar{
+  width:38px;
+  height:38px;
+  border-radius:50%;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,0.16);
+  background:var(--panel-3);
+  color:var(--gold);
+  display:grid;
+  place-items:center;
+  font-family:var(--mono);
+  flex:0 0 auto;
+}
+.user-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
 }
 .user-actions{
   display:flex;

@@ -56,6 +56,9 @@ const imagePreview = document.getElementById('imagePreview');
 const imagePreviewImg = document.getElementById('imagePreviewImg');
 const coverFileInput = document.getElementById('f-cover-file');
 const coverUrlInput = document.getElementById('f-cover-url');
+const coverXInput = document.getElementById('f-cover-x');
+const coverYInput = document.getElementById('f-cover-y');
+const coverCropImg = document.getElementById('coverCropImg');
 const linkInput = document.getElementById('f-link');
 const whoInput = document.getElementById('f-who');
 const metadataSearchBtn = document.getElementById('metadataSearchBtn');
@@ -83,6 +86,14 @@ const pulseMeter = document.getElementById('pulseMeter');
 const pulseStats = document.getElementById('pulseStats');
 const pickNextBtn = document.getElementById('pickNextBtn');
 const focusPickBtn = document.getElementById('focusPickBtn');
+const avatarFileInput = document.getElementById('u-avatar-file');
+const avatarUrlInput = document.getElementById('u-avatar-url');
+const avatarPreview = document.getElementById('u-avatar-preview');
+const avatarPreviewImg = document.getElementById('u-avatar-preview-img');
+const avatarClearBtn = document.getElementById('u-avatar-clear');
+let editingUserAvatar = '';
+let avatarCleared = false;
+let coverPreviewSrc = '';
 
 /* ============================================================
    HELPERS
@@ -262,6 +273,28 @@ function normalizeCatalogItem(row) {
   });
 }
 
+function normalizeCoverValue(value) {
+  if (typeof value === 'string') {
+    return { imageUrl: value, focalX: 50, focalY: 18 };
+  }
+  if (!value || typeof value !== 'object') {
+    return { imageUrl: '', focalX: 50, focalY: 18 };
+  }
+  return {
+    imageUrl: value.imageUrl || value.image_url || '',
+    focalX: Math.max(0, Math.min(100, parseInt(value.focalX ?? value.focal_x ?? 50, 10) || 50)),
+    focalY: Math.max(0, Math.min(100, parseInt(value.focalY ?? value.focal_y ?? 18, 10) || 18)),
+  };
+}
+
+function normalizeCoversMap(value) {
+  const map = {};
+  Object.entries(value || {}).forEach(([category, cover]) => {
+    map[category] = normalizeCoverValue(cover);
+  });
+  return map;
+}
+
 async function storageGet(key, fallback) {
   const endpoint = API_ENDPOINTS[key];
   if (endpoint) {
@@ -273,7 +306,11 @@ async function storageGet(key, fallback) {
       }
       if (res.ok) {
         const data = await res.json();
-        const value = key === STORAGE_KEY ? data.map(normalizeCatalogItem) : data;
+        const value = key === STORAGE_KEY
+          ? data.map(normalizeCatalogItem)
+          : key === COVERS_KEY
+            ? normalizeCoversMap(data)
+            : data;
         try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
         return value;
       }
@@ -286,7 +323,11 @@ async function storageGet(key, fallback) {
     const localValue = localStorage.getItem(key);
     if (localValue) {
       const parsed = JSON.parse(localValue);
-      return key === STORAGE_KEY ? parsed.map(normalizeCatalogItem) : parsed;
+      return key === STORAGE_KEY
+        ? parsed.map(normalizeCatalogItem)
+        : key === COVERS_KEY
+          ? normalizeCoversMap(parsed)
+          : parsed;
     }
   } catch (e) {
     console.warn('No se pudo leer localStorage', e);
@@ -454,9 +495,31 @@ async function openUsersPanel() {
 
 let editingUserId = null;
 
+function setAvatarPreview(src) {
+  if (!src) {
+    avatarPreview.style.display = 'none';
+    avatarPreviewImg.src = '';
+    return;
+  }
+  avatarPreviewImg.src = src;
+  avatarPreview.style.display = 'flex';
+}
+
+function userAvatarMarkup(src, label) {
+  if (src) {
+    return `<span class="user-avatar"><img src="${escapeHtml(src)}" alt=""></span>`;
+  }
+  return `<span class="user-avatar user-avatar-fallback">${escapeHtml((label || '?').slice(0, 1).toUpperCase())}</span>`;
+}
+
 function resetUserForm() {
   editingUserId = null;
+  editingUserAvatar = '';
+  avatarCleared = false;
   userForm.reset();
+  setAvatarPreview('');
+  avatarFileInput.value = '';
+  avatarUrlInput.value = '';
   document.getElementById('u-color').value = '#3b82f6';
   document.getElementById('modalTitle').textContent = 'Usuarios';
 }
@@ -475,6 +538,11 @@ async function editUser(userId) {
   document.getElementById('u-role').value = user.role;
   document.getElementById('u-slot').value = user.profileSlot || '';
   document.getElementById('u-color').value = user.color || '#3b82f6';
+  editingUserAvatar = user.avatar || '';
+  avatarCleared = false;
+  avatarFileInput.value = '';
+  avatarUrlInput.value = user.avatar && !user.avatar.startsWith('data:') ? user.avatar : '';
+  setAvatarPreview(user.avatar || '');
   document.getElementById('u-password').value = '';
   document.getElementById('u-password').placeholder = 'Dejar vacio para mantener contrasena actual';
   document.getElementById('u-password').required = false;
@@ -484,6 +552,9 @@ async function editUser(userId) {
 
 async function saveUser(event) {
   event.preventDefault();
+  const uploadedAvatar = avatarFileInput.files[0] ? await fileToDataUrl(avatarFileInput.files[0]) : '';
+  const avatarUrl = avatarUrlInput.value.trim();
+  const avatar = avatarCleared ? '' : uploadedAvatar || avatarUrl || editingUserAvatar || '';
   const payload = {
     username: document.getElementById('u-username').value.trim(),
     displayName: document.getElementById('u-display').value.trim(),
@@ -491,6 +562,7 @@ async function saveUser(event) {
     role: document.getElementById('u-role').value,
     profileSlot: document.getElementById('u-slot').value || null,
     color: document.getElementById('u-color').value || '#3b82f6',
+    avatar,
   };
   
   let res;
@@ -502,6 +574,7 @@ async function saveUser(event) {
         displayName: payload.displayName,
         color: payload.color,
         profileSlot: payload.profileSlot,
+        avatar: payload.avatar,
       }),
     });
   } else {
@@ -563,7 +636,9 @@ async function loadProfiles() {
       const slot = btn.dataset.who;
       const profile = bySlot[slot];
       const label = profile ? profile.displayName : (slot === 'P1' ? 'Persona 1' : slot === 'P2' ? 'Persona 2' : 'Compartido');
-      btn.textContent = label;
+      btn.innerHTML = profile?.avatar
+        ? `<img class="who-avatar" src="${escapeHtml(profile.avatar)}" alt=""> <span>${escapeHtml(label)}</span>`
+        : `<span>${escapeHtml(label)}</span>`;
       if (profile && profile.color) {
         btn.style.backgroundColor = profile.color;
         btn.style.color = getContrastColor(profile.color);
@@ -767,12 +842,6 @@ function render() {
 
 function renderPulsePanel() {
   const scoped = scopeItems();
-  if (!scoped.length && !featuredSuggestion) {
-    pulsePanel.style.display = 'none';
-    featuredId = null;
-    return;
-  }
-
   pulsePanel.style.display = 'grid';
   const stats = STATUS_ORDER.reduce((acc, status) => {
     acc[status] = scoped.filter(item => computeItemStatus(item) === status).length;
@@ -824,10 +893,10 @@ function renderPulsePanel() {
   } else {
     pulseKicker.textContent = `${label} / ${profile}`;
     pulseTitle.textContent = 'Descubre algo nuevo';
-    pulseMeta.textContent = 'Cambia filtros o agrega un titulo nuevo.';
+    pulseMeta.textContent = 'Pide una sugerencia online o agrega tu primer titulo.';
     pulseMeter.style.width = '0%';
     pickNextBtn.textContent = 'Descubrir online';
-    focusPickBtn.textContent = 'Anadir sugerencia';
+    focusPickBtn.textContent = 'Esperando sugerencia';
     focusPickBtn.disabled = true;
   }
 
@@ -856,13 +925,15 @@ function renderCoverBanner() {
     return;
   }
   coverBanner.style.display = 'block';
-  const manualUrl = covers[currentTab] || '';
+  const manualCover = normalizeCoverValue(covers[currentTab]);
+  const manualUrl = manualCover.imageUrl || '';
   const autoUrl = (catalog.find(item => matchesCurrentProfile(item) && item.category === currentTab && item.image) || {}).image || '';
   const url = manualUrl || autoUrl;
   coverLabel.textContent = CATS[currentTab].label;
   coverBanner.classList.toggle('auto-cover', !manualUrl && Boolean(autoUrl));
   if (url) {
     coverImg.src = url;
+    coverImg.style.objectPosition = manualUrl ? `${manualCover.focalX}% ${manualCover.focalY}%` : 'center top';
     coverImg.style.display = 'block';
     coverBanner.style.background = '';
   } else {
@@ -1027,6 +1098,23 @@ async function pickFeaturedItem() {
     pickNextBtn.disabled = false;
     renderPulsePanel();
   }
+}
+
+function coverDraftUrl() {
+  return coverPreviewSrc || coverUrlInput.value.trim() || normalizeCoverValue(covers[currentTab]).imageUrl || '';
+}
+
+function updateCoverCropPreview(src) {
+  if (src !== undefined) coverPreviewSrc = src;
+  const url = src || coverDraftUrl();
+  if (!url) {
+    coverCropImg.removeAttribute('src');
+    coverCropImg.style.display = 'none';
+    return;
+  }
+  coverCropImg.src = url;
+  coverCropImg.style.display = 'block';
+  coverCropImg.style.objectPosition = `${coverXInput.value}% ${coverYInput.value}%`;
 }
 
 async function focusFeaturedItem() {
@@ -1535,6 +1623,28 @@ imageUrlInput.addEventListener('input', () => {
   if (imageUrlInput.value.trim()) setPreview(imageUrlInput.value.trim());
 });
 
+avatarFileInput.addEventListener('change', async () => {
+  const file = avatarFileInput.files[0];
+  if (!file) return;
+  avatarCleared = false;
+  const dataUrl = await fileToDataUrl(file);
+  editingUserAvatar = dataUrl;
+  setAvatarPreview(dataUrl);
+});
+
+avatarUrlInput.addEventListener('input', () => {
+  avatarCleared = false;
+  if (avatarUrlInput.value.trim()) setAvatarPreview(avatarUrlInput.value.trim());
+});
+
+avatarClearBtn.addEventListener('click', () => {
+  avatarCleared = true;
+  editingUserAvatar = '';
+  avatarFileInput.value = '';
+  avatarUrlInput.value = '';
+  setAvatarPreview('');
+});
+
 document.getElementById('clearImageBtn').addEventListener('click', () => {
   imageCleared = true;
   imageFileInput.value = '';
@@ -1643,25 +1753,47 @@ window.addEventListener('focus', () => {
    ============================================================ */
 document.getElementById('coverEditBtn').addEventListener('click', () => {
   if (currentTab === 'todo') return;
+  const cover = normalizeCoverValue(covers[currentTab]);
   document.getElementById('coverCatLabel').textContent = CATS[currentTab].label;
-  coverUrlInput.value = covers[currentTab] && !covers[currentTab].startsWith('data:') ? covers[currentTab] : '';
+  coverUrlInput.value = cover.imageUrl && !cover.imageUrl.startsWith('data:') ? cover.imageUrl : '';
+  coverXInput.value = cover.focalX;
+  coverYInput.value = cover.focalY;
   coverFileInput.value = '';
+  coverPreviewSrc = cover.imageUrl;
+  updateCoverCropPreview(cover.imageUrl);
   coverOverlay.classList.add('show');
 });
 document.getElementById('coverCancelBtn').addEventListener('click', () => coverOverlay.classList.remove('show'));
 coverOverlay.addEventListener('click', e => { if (e.target === coverOverlay) coverOverlay.classList.remove('show'); });
 
+coverFileInput.addEventListener('change', async () => {
+  const file = coverFileInput.files[0];
+  if (!file) return;
+  const dataUrl = await fileToDataUrl(file);
+  updateCoverCropPreview(dataUrl);
+});
+
+coverUrlInput.addEventListener('input', () => updateCoverCropPreview(coverUrlInput.value.trim()));
+coverXInput.addEventListener('input', () => updateCoverCropPreview());
+coverYInput.addEventListener('input', () => updateCoverCropPreview());
+
 document.getElementById('coverSaveBtn').addEventListener('click', async () => {
   const uploadedCover = coverFileInput.files[0] ? await fileToDataUrl(coverFileInput.files[0]) : '';
   const url = coverUrlInput.value.trim();
-  covers[currentTab] = uploadedCover || url || covers[currentTab] || '';
+  const previous = normalizeCoverValue(covers[currentTab]);
+  covers[currentTab] = {
+    imageUrl: uploadedCover || url || coverPreviewSrc || previous.imageUrl || '',
+    focalX: parseInt(coverXInput.value, 10) || 50,
+    focalY: parseInt(coverYInput.value, 10) || 18,
+  };
   coverOverlay.classList.remove('show');
   render();
   await saveCovers('Portada guardada ✓');
 });
 
 document.getElementById('coverRemoveBtn').addEventListener('click', async () => {
-  covers[currentTab] = '';
+  covers[currentTab] = { imageUrl: '', focalX: 50, focalY: 18 };
+  coverPreviewSrc = '';
   coverOverlay.classList.remove('show');
   render();
   await saveCovers('Portada eliminada');

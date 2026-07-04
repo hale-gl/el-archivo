@@ -170,6 +170,15 @@ def tmdb_image(path):
     return f"{TMDB_IMAGE_BASE}{path}" if path else ""
 
 
+def tmdb_drama_boost(details, item=None):
+    item = item or {}
+    original_language = details.get("original_language") or item.get("original_language")
+    origin_country = details.get("origin_country") or item.get("origin_country") or []
+    if original_language == "ko" or "KR" in origin_country:
+        return 35
+    return 0
+
+
 def clean_html(value):
     if not value:
         return ""
@@ -401,11 +410,12 @@ def tmdb_results(query, category):
                 if season.get("season_number") and season.get("episode_count")
             ]
             total = sum(row["total"] for row in seasons) or None
+        boost = tmdb_drama_boost(details, item) if category == "drama" else 0
 
         results.append(
             {
                 "source": "tmdb",
-                "sourceLabel": "TMDb",
+                "sourceLabel": "TMDb K-drama" if boost else "TMDb",
                 "id": media_id,
                 "category": category,
                 "title": title,
@@ -416,6 +426,8 @@ def tmdb_results(query, category):
                 "seasons": seasons,
                 "total": total,
                 "providers": compact_providers(providers),
+                "score": int((item.get("vote_average") or details.get("vote_average") or 0) * 10) + boost,
+                "format": details.get("original_language") or item.get("original_language") or "",
             }
         )
     return results
@@ -427,10 +439,26 @@ def tmdb_trending(category):
         return []
 
     media = "movie" if category == "pelicula" else "tv"
-    data = fetch_json(
-        tmdb_url(f"/trending/{media}/week", {"language": "es-ES"}),
-        headers,
-    )
+    if category == "drama":
+        data = fetch_json(
+            tmdb_url(
+                "/discover/tv",
+                {
+                    "language": "es-ES",
+                    "include_adult": "false",
+                    "page": 1,
+                    "sort_by": "popularity.desc",
+                    "with_original_language": "ko",
+                    "with_genres": "18",
+                },
+            ),
+            headers,
+        )
+    else:
+        data = fetch_json(
+            tmdb_url(f"/trending/{media}/week", {"language": "es-ES"}),
+            headers,
+        )
     if not isinstance(data, dict):
         return []
 
@@ -454,10 +482,11 @@ def tmdb_trending(category):
                 if season.get("season_number") and season.get("episode_count")
             ]
             total = sum(row["total"] for row in seasons) or None
+        boost = tmdb_drama_boost(details, item) if category == "drama" else 0
         results.append(
             {
                 "source": "tmdb",
-                "sourceLabel": "TMDb tendencias",
+                "sourceLabel": "TMDb K-drama" if boost else "TMDb tendencias",
                 "id": media_id,
                 "category": category,
                 "title": title,
@@ -468,7 +497,8 @@ def tmdb_trending(category):
                 "seasons": seasons,
                 "total": total,
                 "providers": [],
-                "score": int((item.get("vote_average") or 0) * 10),
+                "score": int((item.get("vote_average") or 0) * 10) + boost,
+                "format": details.get("original_language") or item.get("original_language") or "",
             }
         )
     return results
@@ -493,6 +523,14 @@ def wikidata_bindings(sparql):
 
 def binding_value(row, key):
     return ((row.get(key) or {}).get("value") or "").strip()
+
+
+def clamp_int(value, default=50, minimum=0, maximum=100):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(maximum, parsed))
 
 
 def title_match_score(title, query):
@@ -638,10 +676,11 @@ def wikidata_recent_movies():
     SELECT ?item ?label (MIN(?dateValue) AS ?date) (SAMPLE(?imageValue) AS ?image) (SAMPLE(?imdbValue) AS ?imdb) WHERE {
       ?item wdt:P31 wd:Q11424;
             rdfs:label ?label;
-            wdt:P577 ?dateValue.
+            wdt:P577 ?dateValue;
+            wdt:P18 ?imageValue.
       FILTER(LANG(?label) = "en")
       FILTER(?dateValue >= "2024-01-01"^^xsd:dateTime)
-      OPTIONAL { ?item wdt:P18 ?imageValue. }
+      FILTER(?dateValue <= NOW())
       OPTIONAL { ?item wdt:P345 ?imdbValue. }
     }
     GROUP BY ?item ?label
@@ -1059,7 +1098,7 @@ def get_users():
     with connect() as conn:
         rows = conn.execute(
             """
-            SELECT id, username, display_name, role, active, created_at, profile_slot, color
+            SELECT id, username, display_name, role, active, created_at, profile_slot, color, avatar
             FROM users
             ORDER BY active DESC, username ASC
             """
@@ -1078,6 +1117,7 @@ def get_users():
                 "createdAt": row[5].isoformat() if row[5] else None,
                 "profileSlot": row[6],
                 "color": row[7] or "#3b82f6",
+                "avatar": row[8] or "",
                 "badge": badge,
             }
         )
@@ -1090,7 +1130,7 @@ def get_profiles():
     with connect() as conn:
         rows = conn.execute(
             """
-            SELECT username, display_name, profile_slot, color
+            SELECT username, display_name, profile_slot, color, avatar
             FROM users
             WHERE active = TRUE AND profile_slot IN ('P1', 'P2')
             """
@@ -1105,6 +1145,7 @@ def get_profiles():
                 "username": row[0],
                 "displayName": row[1] or row[0],
                 "color": row[3] or "#3b82f6",
+                "avatar": row[4] or "",
                 "badge": badge,
             }
         )
@@ -1121,6 +1162,7 @@ def create_user():
     role = data.get("role") if data.get("role") in {"admin", "user"} else "user"
     profile_slot = data.get("profileSlot") or None
     color = data.get("color") or "#3b82f6"
+    avatar = data.get("avatar") or ""
     if profile_slot not in {None, "", "P1", "P2"}:
         return jsonify({"error": "Perfil invalido"}), 400
     profile_slot = profile_slot or None
@@ -1148,18 +1190,18 @@ def create_user():
                 conn.execute(
                     """
                     UPDATE users
-                    SET password_hash = %s, display_name = %s, role = %s, active = TRUE, profile_slot = %s, color = %s
+                    SET password_hash = %s, display_name = %s, role = %s, active = TRUE, profile_slot = %s, color = %s, avatar = %s
                     WHERE username = %s
                     """,
-                    (generate_password_hash(password), display_name, role, profile_slot, color, username),
+                    (generate_password_hash(password), display_name, role, profile_slot, color, avatar, username),
                 )
             else:
                 conn.execute(
                     """
-                    INSERT INTO users (username, password_hash, display_name, role, active, profile_slot, color)
-                    VALUES (%s, %s, %s, %s, TRUE, %s, %s)
+                    INSERT INTO users (username, password_hash, display_name, role, active, profile_slot, color, avatar)
+                    VALUES (%s, %s, %s, %s, TRUE, %s, %s, %s)
                     """,
-                    (username, generate_password_hash(password), display_name, role, profile_slot, color),
+                    (username, generate_password_hash(password), display_name, role, profile_slot, color, avatar),
                 )
     return jsonify({"success": True})
 
@@ -1210,6 +1252,7 @@ def update_user(user_id):
     display_name = (data.get("displayName") or "").strip()
     color = data.get("color") or "#3b82f6"
     profile_slot = data.get("profileSlot") or None
+    avatar = data.get("avatar") or ""
     
     if profile_slot not in {None, "", "P1", "P2"}:
         return jsonify({"error": "Perfil invalido"}), 400
@@ -1240,10 +1283,10 @@ def update_user(user_id):
             conn.execute(
                 """
                 UPDATE users
-                SET display_name = %s, color = %s, profile_slot = %s
+                SET display_name = %s, color = %s, profile_slot = %s, avatar = %s
                 WHERE id = %s
                 """,
-                (display_name or None, color, profile_slot, user_id),
+                (display_name or None, color, profile_slot, avatar, user_id),
             )
     
     return jsonify({"success": True})
@@ -1352,8 +1395,17 @@ def delete_catalog_item(item_id):
 @login_required
 def get_covers():
     with connect() as conn:
-        rows = conn.execute("SELECT category, image_url FROM covers").fetchall()
-    return jsonify({category: image_url for category, image_url in rows})
+        rows = conn.execute("SELECT category, image_url, focal_x, focal_y FROM covers").fetchall()
+    return jsonify(
+        {
+            category: {
+                "imageUrl": image_url or "",
+                "focalX": focal_x if focal_x is not None else 50,
+                "focalY": focal_y if focal_y is not None else 18,
+            }
+            for category, image_url, focal_x, focal_y in rows
+        }
+    )
 
 
 @app.post("/api/covers")
@@ -1365,15 +1417,27 @@ def save_covers():
 
     with connect() as conn:
         with conn.transaction():
-            for category, image_url in covers.items():
+            for category, cover in covers.items():
+                if isinstance(cover, dict):
+                    image_url = cover.get("imageUrl") or cover.get("image_url") or ""
+                    focal_x = clamp_int(cover.get("focalX", 50), 50)
+                    focal_y = clamp_int(cover.get("focalY", 18), 18)
+                else:
+                    image_url = cover or ""
+                    focal_x = 50
+                    focal_y = 18
                 conn.execute(
                     """
-                    INSERT INTO covers (category, image_url, updated_at)
-                    VALUES (%s, %s, CURRENT_TIMESTAMP)
+                    INSERT INTO covers (category, image_url, focal_x, focal_y, updated_at)
+                    VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
                     ON CONFLICT (category)
-                    DO UPDATE SET image_url = EXCLUDED.image_url, updated_at = CURRENT_TIMESTAMP
+                    DO UPDATE SET
+                      image_url = EXCLUDED.image_url,
+                      focal_x = EXCLUDED.focal_x,
+                      focal_y = EXCLUDED.focal_y,
+                      updated_at = CURRENT_TIMESTAMP
                     """,
-                    (category, image_url),
+                    (category, image_url, focal_x, focal_y),
                 )
 
     return jsonify({"success": True, "message": "Portadas guardadas"})

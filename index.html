@@ -180,6 +180,18 @@
         <input type="color" id="u-color" value="#3b82f6">
       </div>
       <div class="field">
+        <label>Foto de perfil</label>
+        <div class="image-picker">
+          <input type="file" id="u-avatar-file" accept="image/*">
+          <span>o</span>
+          <input type="text" id="u-avatar-url" placeholder="Pegar URL de imagen...">
+        </div>
+        <div class="avatar-preview" id="u-avatar-preview" style="display:none;">
+          <img id="u-avatar-preview-img" src="" alt="Vista previa de foto de perfil">
+          <button type="button" class="link-btn danger" id="u-avatar-clear">Quitar foto</button>
+        </div>
+      </div>
+      <div class="field">
         <label>Perfil</label>
         <select id="u-slot">
           <option value="">Sin perfil (solo cuenta)</option>
@@ -210,7 +222,22 @@
         <input type="text" id="f-cover-url" placeholder="Pegar URL de imagen...">
       </div>
     </div>
-    <div class="hint">Se muestra como banner arriba de esta seccion, para las dos personas.</div>
+    <div class="cover-cropper">
+      <div class="cover-crop-preview">
+        <img id="coverCropImg" src="" alt="Vista previa de portada">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Horizontal</label>
+          <input type="range" id="f-cover-x" min="0" max="100" value="50">
+        </div>
+        <div class="field">
+          <label>Vertical</label>
+          <input type="range" id="f-cover-y" min="0" max="100" value="18">
+        </div>
+      </div>
+    </div>
+    <div class="hint">Ajusta que parte de la imagen queda visible en el banner.</div>
     <div class="modal-actions">
       <button type="button" class="btn-secondary" id="coverCancelBtn">Cancelar</button>
       <button type="button" class="btn-secondary" id="coverRemoveBtn" style="color:var(--crimson);border-color:var(--crimson-dim);">Quitar portada</button>

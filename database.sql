@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_slot VARCHAR(2);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS color VARCHAR(7) DEFAULT '#3b82f6';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);
 CREATE INDEX IF NOT EXISTS idx_users_active ON users (active);
@@ -45,8 +46,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_active_slot ON users (profile_slot) 
 CREATE TABLE IF NOT EXISTS covers (
     category VARCHAR(20) PRIMARY KEY,
     image_url TEXT NOT NULL,
+    focal_x INTEGER DEFAULT 50,
+    focal_y INTEGER DEFAULT 18,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE covers ADD COLUMN IF NOT EXISTS focal_x INTEGER DEFAULT 50;
+ALTER TABLE covers ADD COLUMN IF NOT EXISTS focal_y INTEGER DEFAULT 18;
 
 INSERT INTO covers (category, image_url) VALUES
 ('series', ''),
