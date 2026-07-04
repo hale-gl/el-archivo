@@ -35,6 +35,7 @@ let imageCleared = false;
 let onlineMatches = [];
 let currentSession = null;
 let featuredId = null;
+let featuredSuggestion = null;
 
 /* ============================================================
    DOM REFS
@@ -639,7 +640,7 @@ function renderGlobalSearchResults(results) {
         <strong>${escapeHtml(item.title || 'Sin titulo')}</strong>
         <small>${escapeHtml(metadataDetailText(item))}</small>
       </span>
-      <button type="button" class="btn-primary add-direct-btn" data-result-index="${index}">Añadir</button>
+      <button type="button" class="btn-primary add-direct-btn" data-result-index="${index}">Anadir</button>
     </div>
   `).join('');
   
@@ -649,6 +650,7 @@ function renderGlobalSearchResults(results) {
 }
 
 async function addDirectToCatalog(item) {
+  if (!item) return;
   const newItem = {
     id: uid(),
     title: item.title || 'Sin titulo',
@@ -664,10 +666,11 @@ async function addDirectToCatalog(item) {
   };
   
   catalog.push(newItem);
-  await save('Añadido al catalogo ✓');
+  await save('Anadido al catalogo');
   globalSearchOverlay.classList.remove('show');
   globalSearchResults.innerHTML = '';
   globalSearchInput.value = '';
+  featuredSuggestion = null;
   render();
 }
 
@@ -717,7 +720,7 @@ function render() {
 
 function renderPulsePanel() {
   const scoped = scopeItems();
-  if (!scoped.length) {
+  if (!scoped.length && !featuredSuggestion) {
     pulsePanel.style.display = 'none';
     featuredId = null;
     return;
@@ -751,18 +754,34 @@ function renderPulsePanel() {
 
   const label = currentTab === 'todo' ? 'Todo el archivo' : CATS[currentTab].label;
   const profile = currentWho || 'Compartido';
-  pulseKicker.textContent = `${label} / ${profile}`;
-  pulseTitle.textContent = pick ? pick.title : 'Sin coincidencias';
-  if (pick) {
+  if (featuredSuggestion) {
+    pulseKicker.textContent = `Descubrimiento online / ${featuredSuggestion.sourceLabel || 'API'}`;
+    pulseTitle.textContent = featuredSuggestion.title || 'Sugerencia nueva';
+    pulseMeta.textContent = metadataDetailText(featuredSuggestion);
+    pulseMeter.style.width = '100%';
+    pickNextBtn.textContent = 'Otra sugerencia';
+    focusPickBtn.textContent = 'Anadir sugerencia';
+    focusPickBtn.disabled = false;
+  } else if (pick) {
+    pulseKicker.textContent = `${label} / ${profile}`;
+    pulseTitle.textContent = pick.title;
     const progress = progressOf(pick);
     const cat = CATS[pick.category];
     const track = cat.tracks[0];
     const summary = track ? trackSummary(pick, track) : statusLabel(computeItemStatus(pick));
     pulseMeta.textContent = `${cat.label} · ${statusLabel(computeItemStatus(pick))} · ${summary}`;
     pulseMeter.style.width = `${progress}%`;
+    pickNextBtn.textContent = 'Descubrir online';
+    focusPickBtn.textContent = 'Ver progreso';
+    focusPickBtn.disabled = false;
   } else {
+    pulseKicker.textContent = `${label} / ${profile}`;
+    pulseTitle.textContent = 'Descubre algo nuevo';
     pulseMeta.textContent = 'Cambia filtros o agrega un titulo nuevo.';
     pulseMeter.style.width = '0%';
+    pickNextBtn.textContent = 'Descubrir online';
+    focusPickBtn.textContent = 'Anadir sugerencia';
+    focusPickBtn.disabled = true;
   }
 
   pulseStats.querySelectorAll('[data-pulse-status]').forEach(button => {
@@ -778,14 +797,23 @@ function setStatusFilter(status) {
   render();
 }
 
+function discoverCategory() {
+  if (currentTab !== 'todo') return currentTab;
+  const options = ['anime', 'series', 'pelicula', 'lectura', 'drama'];
+  return options[Math.floor(Math.random() * options.length)];
+}
+
 function renderCoverBanner() {
   if (currentTab === 'todo') {
     coverBanner.style.display = 'none';
     return;
   }
   coverBanner.style.display = 'block';
-  const url = covers[currentTab] || '';
+  const manualUrl = covers[currentTab] || '';
+  const autoUrl = (catalog.find(item => matchesCurrentProfile(item) && item.category === currentTab && item.image) || {}).image || '';
+  const url = manualUrl || autoUrl;
   coverLabel.textContent = CATS[currentTab].label;
+  coverBanner.classList.toggle('auto-cover', !manualUrl && Boolean(autoUrl));
   if (url) {
     coverImg.src = url;
     coverImg.style.display = 'block';
@@ -926,19 +954,39 @@ function bindCardEvents() {
   grid.querySelectorAll('[data-act="linear-status"]').forEach(b => b.addEventListener('click', () => cycleLinearStatus(b.dataset.id, b.dataset.track)));
 }
 
-function pickFeaturedItem() {
-  const visible = filtered();
-  const pool = visible.length ? visible : scopeItems();
-  const candidates = pool.filter(item => computeItemStatus(item) !== 'completado');
-  const options = candidates.length ? candidates : pool;
-  if (!options.length) return;
-  const pick = options[Math.floor(Math.random() * options.length)];
-  featuredId = pick.id;
-  render();
-  showToast(`Elegido: ${pick.title}`);
+async function pickFeaturedItem() {
+  const category = discoverCategory();
+  pickNextBtn.disabled = true;
+  pickNextBtn.textContent = 'Buscando...';
+  try {
+    const res = await fetch(`/api/metadata/discover?${new URLSearchParams({ category }).toString()}`);
+    if (!res.ok) throw new Error('discover');
+    const data = await res.json();
+    const existing = new Set(catalog.map(item => (item.title || '').toLowerCase().trim()));
+    const options = (data.results || []).filter(item => !existing.has((item.title || '').toLowerCase().trim()));
+    const pool = options.length ? options : (data.results || []);
+    if (!pool.length) {
+      showToast('No encontre sugerencias ahora', 'error');
+      return;
+    }
+    featuredSuggestion = pool[Math.floor(Math.random() * pool.length)];
+    featuredId = null;
+    render();
+    showToast(`Sugerencia: ${featuredSuggestion.title}`);
+  } catch (e) {
+    console.error('No se pudo descubrir sugerencia', e);
+    showToast('No se pudo descubrir online', 'error');
+  } finally {
+    pickNextBtn.disabled = false;
+    renderPulsePanel();
+  }
 }
 
-function focusFeaturedItem() {
+async function focusFeaturedItem() {
+  if (featuredSuggestion) {
+    await addDirectToCatalog(featuredSuggestion);
+    return;
+  }
   if (!featuredId) return;
   let card = grid.querySelector(`[data-card-id="${featuredId}"]`);
   if (!card) {

@@ -327,6 +327,84 @@ def tmdb_results(query, category):
     return results
 
 
+def tmdb_trending(category):
+    headers = tmdb_headers()
+    if not headers or category not in {"series", "pelicula", "drama"}:
+        return []
+
+    media = "movie" if category == "pelicula" else "tv"
+    data = fetch_json(
+        tmdb_url(f"/trending/{media}/week", {"language": "es-ES"}),
+        headers,
+    )
+    if not isinstance(data, dict):
+        return []
+
+    results = []
+    for item in (data.get("results") or [])[:8]:
+        media_id = item.get("id")
+        if not media_id:
+            continue
+        details = fetch_json(tmdb_url(f"/{media}/{media_id}", {"language": "es-ES"}), headers) or {}
+        if media == "movie":
+            title = details.get("title") or item.get("title") or ""
+            year = (details.get("release_date") or item.get("release_date") or "")[:4]
+            seasons = []
+            total = None
+        else:
+            title = details.get("name") or item.get("name") or ""
+            year = (details.get("first_air_date") or item.get("first_air_date") or "")[:4]
+            seasons = [
+                {"number": season.get("season_number"), "total": season.get("episode_count") or 0}
+                for season in details.get("seasons") or []
+                if season.get("season_number") and season.get("episode_count")
+            ]
+            total = sum(row["total"] for row in seasons) or None
+        results.append(
+            {
+                "source": "tmdb",
+                "sourceLabel": "TMDb tendencias",
+                "id": media_id,
+                "category": category,
+                "title": title,
+                "year": year,
+                "image": tmdb_image(details.get("poster_path") or item.get("poster_path")),
+                "link": f"https://www.themoviedb.org/{media}/{media_id}",
+                "summary": details.get("overview") or item.get("overview") or "",
+                "seasons": seasons,
+                "total": total,
+                "providers": [],
+                "score": int((item.get("vote_average") or 0) * 10),
+            }
+        )
+    return results
+
+
+def anilist_item_to_result(item, category, source_label="AniList"):
+    title = ((item.get("title") or {}).get("english") or (item.get("title") or {}).get("romaji") or "")
+    total = item.get("episodes") if category == "anime" else item.get("chapters")
+    country = item.get("countryOfOrigin") or ""
+    return {
+        "source": "anilist",
+        "sourceLabel": source_label,
+        "id": item.get("id"),
+        "category": category,
+        "subtype": reading_subtype(country) if category == "lectura" else None,
+        "title": title,
+        "year": str(((item.get("startDate") or {}).get("year")) or ""),
+        "image": ((item.get("coverImage") or {}).get("extraLarge") or (item.get("coverImage") or {}).get("large") or ""),
+        "link": item.get("siteUrl") or "",
+        "summary": clean_html(item.get("description") or ""),
+        "seasons": [{"number": 1, "total": total}] if total else [],
+        "total": total,
+        "providers": [],
+        "score": item.get("averageScore") or 0,
+        "format": item.get("format") or "",
+        "origin": country,
+        "status": item.get("status") or "",
+    }
+
+
 def anilist_results(query, category):
     if category not in {"anime", "lectura"}:
         return []
@@ -357,33 +435,40 @@ def anilist_results(query, category):
         payload={"query": graphql, "variables": {"search": query, "type": media_type}},
     )
     media = (((data or {}).get("data") or {}).get("Page") or {}).get("media") or []
-    results = []
-    for item in media:
-        title = ((item.get("title") or {}).get("english") or (item.get("title") or {}).get("romaji") or "")
-        total = item.get("episodes") if category == "anime" else item.get("chapters")
-        country = item.get("countryOfOrigin") or ""
-        results.append(
-            {
-                "source": "anilist",
-                "sourceLabel": "AniList",
-                "id": item.get("id"),
-                "category": category,
-                "subtype": reading_subtype(country) if category == "lectura" else None,
-                "title": title,
-                "year": str(((item.get("startDate") or {}).get("year")) or ""),
-                "image": ((item.get("coverImage") or {}).get("extraLarge") or (item.get("coverImage") or {}).get("large") or ""),
-                "link": item.get("siteUrl") or "",
-                "summary": clean_html(item.get("description") or ""),
-                "seasons": [{"number": 1, "total": total}] if total else [],
-                "total": total,
-                "providers": [],
-                "score": item.get("averageScore") or 0,
-                "format": item.get("format") or "",
-                "origin": country,
-                "status": item.get("status") or "",
-            }
-        )
-    return results
+    return [anilist_item_to_result(item, category) for item in media]
+
+
+def anilist_trending(category):
+    if category not in {"anime", "lectura"}:
+        return []
+    media_type = "ANIME" if category == "anime" else "MANGA"
+    graphql = """
+    query ($type: MediaType) {
+      Page(page: 1, perPage: 12) {
+        media(type: $type, isAdult: false, sort: [TRENDING_DESC, POPULARITY_DESC]) {
+          id
+          title { romaji english native }
+          coverImage { extraLarge large }
+          siteUrl
+          description(asHtml: false)
+          startDate { year }
+          episodes
+          chapters
+          volumes
+          format
+          countryOfOrigin
+          averageScore
+          status
+        }
+      }
+    }
+    """
+    data = fetch_json(
+        "https://graphql.anilist.co",
+        payload={"query": graphql, "variables": {"type": media_type}},
+    )
+    media = (((data or {}).get("data") or {}).get("Page") or {}).get("media") or []
+    return [anilist_item_to_result(item, category, "AniList tendencias") for item in media]
 
 
 def jikan_results(query, category):
@@ -405,6 +490,41 @@ def jikan_results(query, category):
             {
                 "source": "jikan",
                 "sourceLabel": "Jikan",
+                "id": item.get("mal_id"),
+                "category": category,
+                "subtype": "manga" if category == "lectura" else None,
+                "title": title,
+                "year": str(year or ""),
+                "image": (((item.get("images") or {}).get("jpg") or {}).get("large_image_url") or ""),
+                "link": item.get("url") or "",
+                "summary": item.get("synopsis") or "",
+                "seasons": [{"number": 1, "total": total}] if total else [],
+                "total": total,
+                "providers": [],
+                "score": item.get("score") or 0,
+                "format": item.get("type") or "",
+            }
+        )
+    return results
+
+
+def jikan_trending(category):
+    if category not in {"anime", "lectura"}:
+        return []
+    kind = "anime" if category == "anime" else "manga"
+    data = fetch_json(f"https://api.jikan.moe/v4/top/{kind}?{urlencode({'limit': 8, 'sfw': 'true'})}")
+    if not isinstance(data, dict):
+        return []
+
+    results = []
+    for item in data.get("data") or []:
+        total = item.get("episodes") if kind == "anime" else item.get("chapters")
+        title = item.get("title_spanish") or item.get("title_english") or item.get("title") or ""
+        year = item.get("year") or ((item.get("published") or {}).get("from") or "")[:4]
+        results.append(
+            {
+                "source": "jikan",
+                "sourceLabel": "Jikan top",
                 "id": item.get("mal_id"),
                 "category": category,
                 "subtype": "manga" if category == "lectura" else None,
@@ -500,6 +620,22 @@ def mangadex_results(query, category):
     return results
 
 
+def unique_results(results, limit=8):
+    seen_ids = set()
+    seen_titles = set()
+    unique = []
+    for item in sorted(results, key=lambda result: (source_rank(result.get("source")), -(result.get("score") or 0))):
+        source_key = (item.get("source"), item.get("id"))
+        title_key = normalized_title(item.get("title"))
+        if source_key in seen_ids or (title_key and title_key in seen_titles):
+            continue
+        seen_ids.add(source_key)
+        if title_key:
+            seen_titles.add(title_key)
+        unique.append(item)
+    return unique[:limit]
+
+
 @app.get("/api/metadata/search")
 @login_required
 def metadata_search():
@@ -517,21 +653,33 @@ def metadata_search():
         results = tmdb_results(query, category)
         results.extend(tvmaze_results(query, category))
 
-    seen_ids = set()
-    seen_titles = set()
-    unique = []
-    for item in sorted(results, key=lambda result: (source_rank(result.get("source")), -(result.get("score") or 0))):
-        source_key = (item.get("source"), item.get("id"))
-        title_key = normalized_title(item.get("title"))
-        if source_key in seen_ids or (title_key and title_key in seen_titles):
-            continue
-        seen_ids.add(source_key)
-        if title_key:
-            seen_titles.add(title_key)
-        unique.append(item)
+    unique = unique_results(results, 8)
     return jsonify(
         {
-            "results": unique[:8],
+            "results": unique,
+            "hasTmdb": bool(TMDB_API_KEY),
+            "sources": sorted({item.get("sourceLabel") for item in unique if item.get("sourceLabel")}),
+        }
+    )
+
+
+@app.get("/api/metadata/discover")
+@login_required
+def metadata_discover():
+    category = (request.args.get("category") or "anime").strip()
+    if category == "todo":
+        category = "anime"
+
+    if category in {"anime", "lectura"}:
+        results = anilist_trending(category)
+        results.extend(jikan_trending(category))
+    else:
+        results = tmdb_trending(category)
+
+    unique = unique_results(results, 10)
+    return jsonify(
+        {
+            "results": unique,
             "hasTmdb": bool(TMDB_API_KEY),
             "sources": sorted({item.get("sourceLabel") for item in unique if item.get("sourceLabel")}),
         }
