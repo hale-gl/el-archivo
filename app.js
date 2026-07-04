@@ -316,7 +316,14 @@ async function storageSet(key, value) {
       return;
     }
     if (!res.ok) throw new Error('Error guardando en el servidor');
+    const data = await res.json().catch(() => null);
+    if (key === STORAGE_KEY && Array.isArray(data?.catalog)) {
+      const serverCatalog = data.catalog.map(normalizeCatalogItem);
+      try { localStorage.setItem(key, JSON.stringify(serverCatalog)); } catch (e) {}
+      return serverCatalog;
+    }
   }
+  return value;
 }
 
 async function load() {
@@ -327,12 +334,52 @@ async function load() {
 
 async function save(msg) {
   try {
-    await storageSet(STORAGE_KEY, catalog);
+    const serverCatalog = await storageSet(STORAGE_KEY, catalog);
+    if (Array.isArray(serverCatalog)) {
+      catalog = serverCatalog;
+      render();
+    }
     showToast(msg || 'Guardado ✓');
   } catch (e) {
     console.error('No se pudo guardar', e);
     showToast('Guardado local; fallo el servidor', 'error');
   }
+}
+
+async function reloadCatalogFromServer(silent = true) {
+  try {
+    const res = await fetch('/api/catalog');
+    if (res.status === 401) {
+      window.location.href = '/login';
+      return;
+    }
+    if (!res.ok) throw new Error('Error leyendo catalogo');
+    catalog = (await res.json()).map(normalizeCatalogItem);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(catalog)); } catch (e) {}
+    render();
+  } catch (e) {
+    console.warn('No se pudo refrescar catalogo', e);
+    if (!silent) showToast('No se pudo refrescar servidor', 'error');
+  }
+}
+
+async function deleteCatalogItem(id, msg = 'Eliminado') {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(catalog));
+  } catch (e) {}
+  const res = await fetch(`/api/catalog/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (res.status === 401) {
+    window.location.href = '/login';
+    return;
+  }
+  if (!res.ok) throw new Error('Error eliminando en el servidor');
+  const data = await res.json().catch(() => null);
+  if (Array.isArray(data?.catalog)) {
+    catalog = data.catalog.map(normalizeCatalogItem);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(catalog)); } catch (e) {}
+    render();
+  }
+  showToast(msg);
 }
 
 async function saveCovers(msg) {
@@ -1136,7 +1183,12 @@ async function removeItem(id) {
   if (!confirm('¿Eliminar este título del archivo?')) return;
   catalog = catalog.filter(i => i.id !== id);
   render();
-  await save('Eliminado');
+  try {
+    await deleteCatalogItem(id, 'Eliminado');
+  } catch (e) {
+    console.error('No se pudo eliminar', e);
+    showToast('Eliminado local; fallo el servidor', 'error');
+  }
 }
 
 function resetMetadataLookup(message = 'Busca poster, enlace y capitulos.') {
@@ -1492,10 +1544,16 @@ document.getElementById('clearImageBtn').addEventListener('click', () => {
 
 document.getElementById('deleteBtn').addEventListener('click', async () => {
   if (editingId && confirm('¿Eliminar este título del archivo?')) {
+    const id = editingId;
     catalog = catalog.filter(i => i.id !== editingId);
     overlay.classList.remove('show');
     render();
-    await save('Eliminado');
+    try {
+      await deleteCatalogItem(id, 'Eliminado');
+    } catch (e) {
+      console.error('No se pudo eliminar', e);
+      showToast('Eliminado local; fallo el servidor', 'error');
+    }
   }
 });
 
@@ -1567,12 +1625,17 @@ pickNextBtn.addEventListener('click', pickFeaturedItem);
 focusPickBtn.addEventListener('click', focusFeaturedItem);
 
 document.querySelectorAll('.who-btn[data-who]').forEach(b => {
-  b.addEventListener('click', () => {
+  b.addEventListener('click', async () => {
     document.querySelectorAll('.who-btn[data-who]').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     currentWho = b.dataset.who;
     render();
+    await reloadCatalogFromServer();
   });
+});
+
+window.addEventListener('focus', () => {
+  reloadCatalogFromServer();
 });
 
 /* ============================================================

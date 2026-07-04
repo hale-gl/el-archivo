@@ -1258,6 +1258,10 @@ def index():
 @app.get("/api/catalog")
 @login_required
 def get_catalog():
+    return jsonify(read_catalog())
+
+
+def read_catalog():
     with connect() as conn:
         rows = conn.execute(
             """
@@ -1286,7 +1290,7 @@ def get_catalog():
                 "updated_at": row[11].isoformat() if row[11] else None,
             }
         )
-    return jsonify(catalog)
+    return catalog
 
 
 @app.post("/api/catalog")
@@ -1298,7 +1302,6 @@ def save_catalog():
 
     with connect() as conn:
         with conn.transaction():
-            conn.execute("DELETE FROM catalog")
             for item in catalog:
                 conn.execute(
                     """
@@ -1306,6 +1309,18 @@ def save_catalog():
                       (id, title, image, link, category, subtype, status, who, seasons, volumes, updated_at)
                     VALUES
                       (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, COALESCE(to_timestamp(%s / 1000.0), CURRENT_TIMESTAMP))
+                    ON CONFLICT (id) DO UPDATE SET
+                      title = EXCLUDED.title,
+                      image = EXCLUDED.image,
+                      link = EXCLUDED.link,
+                      category = EXCLUDED.category,
+                      subtype = EXCLUDED.subtype,
+                      status = EXCLUDED.status,
+                      who = EXCLUDED.who,
+                      seasons = EXCLUDED.seasons,
+                      volumes = EXCLUDED.volumes,
+                      updated_at = EXCLUDED.updated_at
+                    WHERE catalog.updated_at <= EXCLUDED.updated_at
                     """,
                     (
                         item.get("id"),
@@ -1322,7 +1337,15 @@ def save_catalog():
                     ),
                 )
 
-    return jsonify({"success": True, "message": "Catalogo guardado"})
+    return jsonify({"success": True, "message": "Catalogo guardado", "catalog": read_catalog()})
+
+
+@app.delete("/api/catalog/<item_id>")
+@login_required
+def delete_catalog_item(item_id):
+    with connect() as conn:
+        conn.execute("DELETE FROM catalog WHERE id = %s", (item_id,))
+    return jsonify({"success": True, "catalog": read_catalog()})
 
 
 @app.get("/api/covers")
