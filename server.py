@@ -205,9 +205,11 @@ def source_rank(source):
     return {
         "anilist": 0,
         "tmdb": 1,
-        "mangadex": 2,
-        "tvmaze": 3,
-        "jikan": 4,
+        "tvmaze": 2,
+        "episodate": 3,
+        "mangadex": 4,
+        "jikan": 5,
+        "wikidata": 6,
     }.get(source, 9)
 
 
@@ -268,6 +270,98 @@ def tvmaze_results(query, category):
             }
         )
     return results
+
+
+def episodate_seasons(show_ref):
+    if not show_ref:
+        return [], {}
+    details = fetch_json(f"https://www.episodate.com/api/show-details?q={quote(str(show_ref))}")
+    tv_show = (details or {}).get("tvShow") if isinstance(details, dict) else {}
+    seasons = {}
+    for episode in (tv_show or {}).get("episodes") or []:
+        try:
+            season = int(episode.get("season") or 0)
+            number = int(episode.get("episode") or episode.get("number") or 0)
+        except (TypeError, ValueError):
+            continue
+        if season > 0 and number > 0:
+            seasons[season] = max(seasons.get(season, 0), number)
+    season_rows = [
+        {"number": number, "total": total}
+        for number, total in sorted(seasons.items())
+        if total
+    ]
+    return season_rows, tv_show or {}
+
+
+def episodate_link(show):
+    permalink = (show or {}).get("permalink") or ""
+    if not permalink:
+        return (show or {}).get("url") or ""
+    if permalink.startswith("http"):
+        return permalink
+    permalink = permalink.strip("/")
+    if permalink.startswith("tv-show/"):
+        return f"https://www.episodate.com/{permalink}"
+    return f"https://www.episodate.com/tv-show/{permalink}"
+
+
+def episodate_result_from_show(show, category, source_label="EpisoDate"):
+    show_ref = show.get("id") or show.get("permalink")
+    seasons, details = episodate_seasons(show_ref)
+    merged = {**show, **details}
+    title = merged.get("name") or merged.get("title") or ""
+    start_date = merged.get("start_date") or merged.get("startDate") or ""
+    image = (
+        merged.get("image_thumbnail")
+        or merged.get("image_thumbnail_path")
+        or merged.get("image_path")
+        or merged.get("image")
+        or ""
+    )
+    return {
+        "source": "episodate",
+        "sourceLabel": source_label,
+        "id": show_ref,
+        "category": category,
+        "title": title,
+        "year": str(start_date)[:4],
+        "image": image,
+        "link": episodate_link(merged),
+        "summary": clean_html(merged.get("description") or ""),
+        "seasons": seasons,
+        "total": sum(row["total"] for row in seasons) or None,
+        "providers": [],
+        "score": 0,
+        "format": merged.get("network") or merged.get("country") or "",
+        "status": merged.get("status") or "",
+    }
+
+
+def episodate_results(query, category):
+    if category not in {"series", "drama"}:
+        return []
+    data = fetch_json(f"https://www.episodate.com/api/search?{urlencode({'q': query, 'page': 1})}")
+    if not isinstance(data, dict):
+        return []
+    return [
+        episodate_result_from_show(show, category)
+        for show in (data.get("tv_shows") or [])[:5]
+        if show.get("name") or show.get("title")
+    ]
+
+
+def episodate_trending(category):
+    if category not in {"series", "drama"}:
+        return []
+    data = fetch_json("https://www.episodate.com/api/most-popular?page=1")
+    if not isinstance(data, dict):
+        return []
+    return [
+        episodate_result_from_show(show, category, "EpisoDate populares")
+        for show in (data.get("tv_shows") or [])[:8]
+        if show.get("name") or show.get("title")
+    ]
 
 
 def tmdb_results(query, category):
@@ -378,6 +472,187 @@ def tmdb_trending(category):
             }
         )
     return results
+
+
+def sparql_text(value):
+    return str(value or "").lower().replace("\\", "\\\\").replace('"', '\\"')
+
+
+def wikidata_bindings(sparql):
+    headers = {
+        "Accept": "application/sparql-results+json",
+        "User-Agent": "ElArchivo/1.0 (personal media catalog)",
+    }
+    data = fetch_json(
+        "https://query.wikidata.org/sparql?"
+        + urlencode({"query": sparql, "format": "json"}),
+        headers,
+    )
+    return (((data or {}).get("results") or {}).get("bindings") or [])
+
+
+def binding_value(row, key):
+    return ((row.get(key) or {}).get("value") or "").strip()
+
+
+def title_match_score(title, query):
+    title_key = normalized_title(title)
+    query_key = normalized_title(query)
+    if not title_key or not query_key:
+        return 0
+    if title_key == query_key:
+        return 100
+    if title_key == f"the{query_key}":
+        return 98
+    if title_key.startswith(query_key):
+        return 90
+    if title_key.startswith(f"the{query_key}"):
+        return 88
+    if query_key in title_key:
+        return max(20, 80 - (len(title_key) - len(query_key)))
+    return 0
+
+
+def wikidata_claim_values(entity, prop):
+    values = []
+    for claim in ((entity.get("claims") or {}).get(prop) or []):
+        value = (((claim.get("mainsnak") or {}).get("datavalue") or {}).get("value"))
+        if isinstance(value, dict):
+            values.append(value.get("id") or value.get("time") or "")
+        elif value:
+            values.append(str(value))
+    return [value for value in values if value]
+
+
+def wikidata_entity_label(entity, fallback=""):
+    labels = entity.get("labels") or {}
+    return ((labels.get("es") or {}).get("value") or (labels.get("en") or {}).get("value") or fallback)
+
+
+def wikidata_image_url(filename):
+    if not filename:
+        return ""
+    return f"https://commons.wikimedia.org/wiki/Special:FilePath/{quote(filename)}"
+
+
+def wikidata_movie_result(row, source_label="Wikidata", query=""):
+    item_url = binding_value(row, "item")
+    qid = item_url.rsplit("/", 1)[-1] if item_url else binding_value(row, "qid")
+    imdb = binding_value(row, "imdb")
+    date = binding_value(row, "date")
+    title = binding_value(row, "label")
+    return {
+        "source": "wikidata",
+        "sourceLabel": source_label,
+        "id": qid,
+        "category": "pelicula",
+        "title": title,
+        "year": date[:4],
+        "image": binding_value(row, "image"),
+        "link": f"https://www.imdb.com/title/{imdb}/" if imdb else item_url,
+        "summary": "",
+        "seasons": [],
+        "total": None,
+        "providers": [],
+        "score": title_match_score(title, query),
+        "format": "film",
+    }
+
+
+def wikidata_movie_results(query):
+    hits = []
+    seen = set()
+    for language in ("es", "en"):
+        data = fetch_json(
+            "https://www.wikidata.org/w/api.php?"
+            + urlencode(
+                {
+                    "action": "wbsearchentities",
+                    "format": "json",
+                    "language": language,
+                    "uselang": language,
+                    "type": "item",
+                    "limit": 12,
+                    "search": query,
+                }
+            )
+        )
+        for hit in (data or {}).get("search") or []:
+            qid = hit.get("id")
+            if qid and qid not in seen:
+                seen.add(qid)
+                hits.append(hit)
+
+    ids = [hit["id"] for hit in hits if hit.get("id")]
+    if not ids:
+        return []
+
+    data = fetch_json(
+        "https://www.wikidata.org/w/api.php?"
+        + urlencode(
+            {
+                "action": "wbgetentities",
+                "format": "json",
+                "ids": "|".join(ids[:24]),
+                "props": "claims|labels",
+                "languages": "es|en",
+            }
+        )
+    )
+    entities = (data or {}).get("entities") or {}
+    results = []
+    fallback_labels = {hit.get("id"): hit.get("label") or "" for hit in hits}
+
+    for qid in ids:
+        entity = entities.get(qid) or {}
+        if "Q11424" not in wikidata_claim_values(entity, "P31"):
+            continue
+        title = wikidata_entity_label(entity, fallback_labels.get(qid, ""))
+        dates = wikidata_claim_values(entity, "P577")
+        images = wikidata_claim_values(entity, "P18")
+        imdb = next(iter(wikidata_claim_values(entity, "P345")), "")
+        date = next(iter(dates), "").lstrip("+")
+        results.append(
+            {
+                "source": "wikidata",
+                "sourceLabel": "Wikidata",
+                "id": qid,
+                "category": "pelicula",
+                "title": title,
+                "year": date[:4],
+                "image": wikidata_image_url(next(iter(images), "")),
+                "link": f"https://www.imdb.com/title/{imdb}/" if imdb else f"https://www.wikidata.org/wiki/{qid}",
+                "summary": "",
+                "seasons": [],
+                "total": None,
+                "providers": [],
+                "score": title_match_score(title, query),
+                "format": "film",
+            }
+        )
+    return results
+
+
+def wikidata_recent_movies():
+    sparql = """
+    SELECT ?item ?label (MIN(?dateValue) AS ?date) (SAMPLE(?imageValue) AS ?image) (SAMPLE(?imdbValue) AS ?imdb) WHERE {
+      ?item wdt:P31 wd:Q11424;
+            rdfs:label ?label;
+            wdt:P577 ?dateValue.
+      FILTER(LANG(?label) = "en")
+      FILTER(?dateValue >= "2024-01-01"^^xsd:dateTime)
+      OPTIONAL { ?item wdt:P18 ?imageValue. }
+      OPTIONAL { ?item wdt:P345 ?imdbValue. }
+    }
+    GROUP BY ?item ?label
+    ORDER BY DESC(?date)
+    LIMIT 12
+    """
+    return [
+        wikidata_movie_result(row, "Wikidata recientes")
+        for row in wikidata_bindings(sparql)
+        if binding_value(row, "label")
+    ]
 
 
 def anilist_item_to_result(item, category, source_label="AniList"):
@@ -651,14 +926,19 @@ def metadata_search():
         results.extend(jikan_results(query, category))
     else:
         results = tmdb_results(query, category)
-        results.extend(tvmaze_results(query, category))
+        if category in {"series", "drama"}:
+            results.extend(tvmaze_results(query, category))
+            results.extend(episodate_results(query, category))
+        elif category == "pelicula":
+            results.extend(wikidata_movie_results(query))
 
+    sources = sorted({item.get("sourceLabel") for item in results if item.get("sourceLabel")})
     unique = unique_results(results, 8)
     return jsonify(
         {
             "results": unique,
             "hasTmdb": bool(TMDB_API_KEY),
-            "sources": sorted({item.get("sourceLabel") for item in unique if item.get("sourceLabel")}),
+            "sources": sources,
         }
     )
 
@@ -673,15 +953,23 @@ def metadata_discover():
     if category in {"anime", "lectura"}:
         results = anilist_trending(category)
         results.extend(jikan_trending(category))
+    elif category in {"series", "drama"}:
+        results = tmdb_trending(category)
+        results.extend(episodate_trending(category))
+    elif category == "pelicula":
+        results = tmdb_trending(category)
+        if not results:
+            results.extend(wikidata_recent_movies())
     else:
         results = tmdb_trending(category)
 
+    sources = sorted({item.get("sourceLabel") for item in results if item.get("sourceLabel")})
     unique = unique_results(results, 10)
     return jsonify(
         {
             "results": unique,
             "hasTmdb": bool(TMDB_API_KEY),
-            "sources": sorted({item.get("sourceLabel") for item in unique if item.get("sourceLabel")}),
+            "sources": sources,
         }
     )
 

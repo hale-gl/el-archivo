@@ -1152,6 +1152,7 @@ function metadataDetailText(item) {
   if (item.total) parts.push(`${item.total} capitulos`);
   if (item.subtype) parts.push(item.subtype);
   if (item.format) parts.push(item.format);
+  if (item.status) parts.push(item.status);
   if (item.score) parts.push(`${item.score}/100`);
   if (item.providers?.length) parts.push(item.providers.join(', '));
   if (item.sourceLabel) parts.push(item.sourceLabel);
